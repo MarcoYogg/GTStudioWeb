@@ -10,3 +10,7 @@ Main Functions:
   - e.g. a meeting minute with a voting record
 4. a page to place our studio floor plan.
 5. a calendar , to mark down who has attend studio, who will attend this place , also a function to have a poll to see who will attend this place
+
+
+First phase :
+Login / Receipts / Receipt List / Floor Plan
