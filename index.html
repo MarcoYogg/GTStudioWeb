@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GT Studio 內部管理</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <header>
+        <div class="header-container">
+            <h1>GT Studio</h1>
+            <nav id="top-nav">
+                <button class="nav-btn active" data-section="home">首頁</button>
+                <button class="nav-btn" data-section="upload">上傳收據</button>
+                <button class="nav-btn" data-section="list">收據清單</button>
+                <button class="nav-btn" data-section="floorplan">平面圖</button>
+            </nav>
+            <div id="auth-section">
+                <span id="user-email"></span>
+                <button id="login-btn" class="auth-btn">Google 登入</button>
+                <button id="logout-btn" class="auth-btn" style="display: none;">登出</button>
+            </div>
+        </div>
+    </header>
+
+    <main id="app-content">
+        <!-- 首頁 -->
+        <section id="section-home" class="page-section">
+            <h2>歡迎回來</h2>
+            <p>這是 GT Studio 的內部管理系統。請登入後開始使用功能。</p>
+            <div id="login-welcome" style="display: none;">
+                <p>您已成功登入，可以使用上方導覽列查看或上傳收據。</p>
+            </div>
+        </section>
+
+        <!-- 上傳收據 -->
+        <section id="section-upload" class="page-section" style="display: none;">
+            <h2>上傳新收據</h2>
+            <form id="upload-form">
+                <div class="form-group">
+                    <label for="receipt-title">標題</label>
+                    <input type="text" id="receipt-title" required placeholder="例如：4月電費">
+                </div>
+                <div class="form-group">
+                    <label for="receipt-amount">金額</label>
+                    <input type="number" id="receipt-amount" required placeholder="請輸入金額">
+                </div>
+                <div class="form-group">
+                    <label for="receipt-note">備註</label>
+                    <textarea id="receipt-note" rows="3" placeholder="其他說明..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="receipt-file">檔案 (JPG/PNG/PDF)</label>
+                    <input type="file" id="receipt-file" accept="image/*,.pdf" required>
+                </div>
+                <button type="submit" id="submit-upload" class="primary-btn">開始上傳</button>
+            </form>
+            <div id="upload-status"></div>
+        </section>
+
+        <!-- 收據清單 -->
+        <section id="section-list" class="page-section" style="display: none;">
+            <h2>收據歷史記錄</h2>
+            <div class="table-container">
+                <table id="receipts-table">
+                    <thead>
+                        <tr>
+                            <th>標題</th>
+                            <th>金額</th>
+                            <th>上傳者</th>
+                            <th>狀態</th>
+                            <th>日期</th>
+                            <th>檔案</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="receipts-body">
+                        <!-- 資料將由 JS 動態生成 -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 平面圖 -->
+        <section id="section-floorplan" class="page-section" style="display: none;">
+            <h2>工作室平面圖</h2>
+            <div class="floorplan-container">
+                <img id="floorplan-img" src="floorplan-placeholder.jpg" alt="工作室平面圖" style="max-width: 100%;">
+                <p class="hint">如需更新平面圖，請聯繫管理員。</p>
+            </div>
+        </section>
+    </main>
+
+    <!-- 這裡使用 type="module" 是為了支援 Firebase 模組化導入 -->
+    <script type="module" src="app.js"></script>
+</body>
+</html>
