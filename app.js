@@ -119,6 +119,11 @@ onAuthStateChanged(auth, async (user) => {
         loginWelcome.style.display = 'none';
     }
     updateNavigationUI();
+
+    // 移除 Loading Overlay 並顯示內容
+    document.body.classList.remove('app-hidden');
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay) overlay.style.display = 'none';
 });
 
 // --- 3. 收據邏輯 ---
