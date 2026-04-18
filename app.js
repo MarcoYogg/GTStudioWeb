@@ -35,9 +35,12 @@ const DEFAULT_PERMISSIONS = {
         "can_approve_receipts": false,
         "can_manage_members": false,
         "can_view_tickets": false,
+        "can_view_schedule": true,
+        "can_view_attendance": false,
         "can_report_tickets": false,
         "can_manage_tickets": false,
-        "can_view_schedule": true,
+        "can_upload_receipts": false,
+        "can_create_events": false,
         "can_rsvp": false
     },
     "member": {
@@ -46,9 +49,11 @@ const DEFAULT_PERMISSIONS = {
         "can_approve_receipts": false,
         "can_manage_members": false,
         "can_view_tickets": true,
+        "can_view_schedule": true,
+        "can_view_attendance": true,
         "can_report_tickets": true,
         "can_manage_tickets": false,
-        "can_view_schedule": true,
+        "can_create_events": false,
         "can_rsvp": true
     },
     "finance": {
@@ -57,9 +62,11 @@ const DEFAULT_PERMISSIONS = {
         "can_approve_receipts": true,
         "can_manage_members": false,
         "can_view_tickets": true,
+        "can_view_schedule": true,
+        "can_view_attendance": true,
         "can_report_tickets": true,
         "can_manage_tickets": false,
-        "can_view_schedule": true,
+        "can_create_events": false,
         "can_rsvp": true
     }
 };
@@ -146,16 +153,28 @@ const closeRolesModal = document.getElementById('close-roles-modal');
 const rolesBody = document.getElementById('roles-body');
 const saveRolesBtn = document.getElementById('save-roles-btn');
 
-const PERMISSION_LABELS = {
-    "can_view_receipts": "查看收據列表",
-    "can_upload_receipts": "上傳收據",
-    "can_approve_receipts": "核准收據",
-    "can_view_tickets": "查看問題回報",
-    "can_report_tickets": "新增問題回報",
-    "can_manage_tickets": "管理問題回報",
-    "can_view_schedule": "查看出席日曆",
-    "can_rsvp": "標記出席回報"
-};
+const PERMISSION_GROUPS = [
+    {
+        group: "查看 (Visibility)",
+        items: {
+            "can_view_receipts":    "查看收據列表",
+            "can_view_tickets":     "查看問題回報",
+            "can_view_schedule":    "查看出席日曆",
+            "can_view_attendance":  "查看每日出席狀態"
+        }
+    },
+    {
+        group: "操作 (Action)",
+        items: {
+            "can_upload_receipts":  "上傳收據",
+            "can_approve_receipts": "核准收據",
+            "can_report_tickets":   "新增問題回報",
+            "can_manage_tickets":   "管理問題回報（改狀態 / 刪除）",
+            "can_create_events":    "新增日曆活動",
+            "can_rsvp":             "標記出席回報"
+        }
+    }
+];
 
 // --- 1. 導覽邏輯 ---
 navBtns.forEach(btn => {
@@ -240,19 +259,24 @@ closeRolesModal.onclick = () => rolesModal.style.display = 'none';
 function renderRolesTable() {
     rolesBody.innerHTML = '';
     const roles = ["guest", "member", "finance"];
-    const perms = Object.keys(PERMISSION_LABELS);
 
-    perms.forEach(pKey => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${PERMISSION_LABELS[pKey]}</td>`;
-        
-        roles.forEach(role => {
-            const td = document.createElement('td');
-            const checked = globalPermissionsMap[role][pKey] ? 'checked' : '';
-            td.innerHTML = `<input type="checkbox" data-role="${role}" data-perm="${pKey}" ${checked}>`;
-            tr.appendChild(td);
+    PERMISSION_GROUPS.forEach(group => {
+        const headerTr = document.createElement('tr');
+        headerTr.innerHTML = `<td colspan="4" class="perm-group-header">${group.group}</td>`;
+        rolesBody.appendChild(headerTr);
+
+        Object.entries(group.items).forEach(([pKey, label]) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${label}</td>`;
+            roles.forEach(role => {
+                const td = document.createElement('td');
+                td.style.textAlign = 'center';
+                const checked = globalPermissionsMap[role]?.[pKey] ? 'checked' : '';
+                td.innerHTML = `<input type="checkbox" data-role="${role}" data-perm="${pKey}" ${checked}>`;
+                tr.appendChild(td);
+            });
+            rolesBody.appendChild(tr);
         });
-        rolesBody.appendChild(tr);
     });
 }
 
@@ -622,15 +646,20 @@ function renderDayModal(dateStr) {
     const myResponse = currentUser ? (presenceForDay.find(r => r.userEmail === currentUser.email)?.response || null) : null;
 
     // 出席區塊
-    let presenceHTML = `<div class="day-section"><h4>出席狀態</h4><div class="member-presence-list">`;
-    const activeMembers = allMembers.filter(mb => mb.Status === 'active');
-    activeMembers.forEach(member => {
-        const resp = presenceForDay.find(r => r.userEmail === member.id);
-        const status = resp?.response || 'unknown';
-        const emoji = status === 'yes' ? '✅' : status === 'no' ? '❌' : '❓';
-        presenceHTML += `<div class="member-presence-item"><span>${emoji}</span><span>${member.Name}</span></div>`;
-    });
-    presenceHTML += `</div>`;
+    let presenceHTML = '';
+    if (hasPermission('can_view_attendance')) {
+        presenceHTML = `<div class="day-section"><h4>出席狀態</h4><div class="member-presence-list">`;
+        const activeMembers = allMembers.filter(mb => mb.Status === 'active');
+        activeMembers.forEach(member => {
+            const resp = presenceForDay.find(r => r.userEmail === member.id);
+            const status = resp?.response || 'unknown';
+            const emoji = status === 'yes' ? '✅' : status === 'no' ? '❌' : '❓';
+            presenceHTML += `<div class="member-presence-item"><span>${emoji}</span><span>${member.Name}</span></div>`;
+        });
+        presenceHTML += `</div>`;
+    } else {
+        presenceHTML = `<div class="day-section">`;
+    }
     if (currentUser && hasPermission('can_rsvp')) {
         presenceHTML += `<div class="my-vote-row">
             <span>我的狀態：</span>
@@ -642,7 +671,7 @@ function renderDayModal(dateStr) {
 
     // 活動區塊
     const eventsForDay = allEvents.filter(e => e.date === dateStr);
-    let eventsHTML = `<div class="day-section"><h4>活動 ${hasPermission('developer') ? `<button class="inline-add-btn" onclick="openEventModal('${dateStr}')">+ 新增</button>` : ''}</h4>`;
+    let eventsHTML = `<div class="day-section"><h4>活動 ${hasPermission('can_create_events') ? `<button class="inline-add-btn" onclick="openEventModal('${dateStr}')">+ 新增</button>` : ''}</h4>`;
     if (eventsForDay.length === 0) {
         eventsHTML += `<p class="no-events">今天沒有活動</p>`;
     } else {

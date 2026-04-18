@@ -234,6 +234,28 @@ th {
     flex-wrap: wrap;
 }
 
+/* 角色權限 Modal group header */
+.perm-group-header {
+    background-color: #f0f4ff;
+    color: #3a5bd9;
+    font-weight: bold;
+    font-size: 0.82em;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 8px 12px;
+    border-top: 2px solid #dce5ff;
+}
+
+#roles-table td:not(.perm-group-header) {
+    padding: 0.6rem 1rem;
+}
+
+#roles-table input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
 .search-filter {
     display: flex;
     gap: 10px;
