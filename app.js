@@ -10,6 +10,7 @@ import {
     getDoc,
     getDocs, 
     updateDoc, 
+    setDoc,
     doc, 
     query, 
     orderBy, 
@@ -28,6 +29,7 @@ const ROLE_HIERARCHY = ["guest", "member", "finance", "developer"];
 let currentUser = null;
 let currentUserRole = "guest";
 let currentUserName = "";
+let allMembers = [];
 
 // --- 輔助函式 ---
 function hasPermission(requiredRole) {
@@ -37,16 +39,11 @@ function hasPermission(requiredRole) {
 function updateNavigationUI() {
     const uploadBtn = document.querySelector('[data-section="upload"]');
     const listBtn = document.querySelector('[data-section="list"]');
+    const adminBtn = document.querySelector('[data-section="admin"]');
     
-    // 上傳功能：需具備 member 權限
-    if (uploadBtn) {
-        uploadBtn.style.display = (currentUser && hasPermission("member")) ? 'inline-block' : 'none';
-    }
-    
-    // 清單功能：需具備 finance 權限
-    if (listBtn) {
-        listBtn.style.display = (currentUser && hasPermission("finance")) ? 'inline-block' : 'none';
-    }
+    if (uploadBtn) uploadBtn.style.display = (currentUser && hasPermission("member")) ? 'inline-block' : 'none';
+    if (listBtn) listBtn.style.display = (currentUser && hasPermission("finance")) ? 'inline-block' : 'none';
+    if (adminBtn) adminBtn.style.display = (currentUser && hasPermission("developer")) ? 'inline-block' : 'none';
 }
 
 // --- DOM 元素參考 ---
@@ -59,49 +56,41 @@ const loginWelcome = document.getElementById('login-welcome');
 const uploadForm = document.getElementById('upload-form');
 const receiptsBody = document.getElementById('receipts-body');
 
-// --- 1. 導覽切換邏輯 ---
+// Admin 元素
+const membersBody = document.getElementById('members-body');
+const memberModal = document.getElementById('member-modal');
+const memberForm = document.getElementById('member-form');
+const closeMemberModal = document.getElementById('close-modal');
+const addMemberBtn = document.getElementById('add-member-btn');
+const memberSearch = document.getElementById('member-search');
+const roleFilter = document.getElementById('role-filter');
+
+// --- 1. 導覽邏輯 ---
 navBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         const targetSection = btn.getAttribute('data-section');
-        
-        // 切換按鈕樣式
         navBtns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-
-        // 切換區塊顯示
         sections.forEach(sec => {
             sec.style.display = sec.id === `section-${targetSection}` ? 'block' : 'none';
         });
 
-        // 進入清單頁面時刷新資料
-        if (targetSection === 'list') {
-            loadReceipts();
-        }
+        if (targetSection === 'list') loadReceipts();
+        if (targetSection === 'admin') loadMembers();
     });
 });
 
 // --- 2. 認證邏輯 ---
-// Google 登入
 loginBtn.addEventListener('click', () => {
-    signInWithPopup(auth, googleProvider).catch((error) => {
-        console.error("登入失敗:", error);
-        alert("登入失敗，請稍後再試。");
-    });
+    signInWithPopup(auth, googleProvider).catch(err => console.error("登入失敗:", err));
 });
-
-// 登出
 logoutBtn.addEventListener('click', () => signOut(auth));
 
-// 監聽認證狀態變化（含 Role 邏輯）
 onAuthStateChanged(auth, async (user) => {
     currentUser = user;
-    
     if (user) {
-        // 讀取 Firestore 中的會員資料
         try {
-            const memberRef = doc(db, "member", user.email);
-            const memberSnap = await getDoc(memberRef);
-            
+            const memberSnap = await getDoc(doc(db, "member", user.email));
             if (memberSnap.exists()) {
                 const data = memberSnap.data();
                 currentUserName = data.Name || user.email;
@@ -110,19 +99,14 @@ onAuthStateChanged(auth, async (user) => {
                 currentUserName = user.email;
                 currentUserRole = "guest";
             }
-        } catch (error) {
-            console.error("權限讀取失敗:", error);
-            currentUserName = user.email;
+        } catch (err) {
             currentUserRole = "guest";
         }
-
-        // 更新 UI
         userEmailSpan.textContent = `${currentUserName} (${currentUserRole})`;
         loginBtn.style.display = 'none';
         logoutBtn.style.display = 'inline-block';
         loginWelcome.style.display = 'block';
     } else {
-        // 未登入狀態
         currentUserRole = "guest";
         currentUserName = "";
         userEmailSpan.textContent = '';
@@ -130,122 +114,184 @@ onAuthStateChanged(auth, async (user) => {
         logoutBtn.style.display = 'none';
         loginWelcome.style.display = 'none';
     }
-    
-    // 更新導覽按覽按鈕
     updateNavigationUI();
 });
 
-// --- 3. 上傳功能 ---
-uploadForm.addEventListener('submit', async (e) => {
+// --- 3. 收據邏輯 ---
+uploadForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    
-    if (!currentUser) {
-        alert("請先登入才能上傳收據");
-        return;
-    }
-
-    const title = document.getElementById('receipt-title').value;
-    const amount = Number(document.getElementById('receipt-amount').value);
-    const note = document.getElementById('receipt-note').value;
     const file = document.getElementById('receipt-file').files[0];
     const statusDiv = document.getElementById('upload-status');
     const submitBtn = document.getElementById('submit-upload');
-
-    if (!file) {
-        alert("請選擇檔案");
-        return;
-    }
+    if (!file) return;
 
     try {
-        statusDiv.textContent = "正在上傳檔案...";
+        statusDiv.textContent = "上傳中...";
         submitBtn.disabled = true;
-
-        // 上傳檔案到 Storage
-        const timestamp = Date.now();
-        const fileRef = ref(storage, `receipts/${currentUser.email}/${timestamp}_${file.name}`);
+        const filePath = `receipts/${currentUser.email}/${Date.now()}_${file.name}`;
+        const fileRef = ref(storage, filePath);
         await uploadBytes(fileRef, file);
         const fileUrl = await getDownloadURL(fileRef);
 
-        // 儲存收據資訊到 Firestore
         await addDoc(collection(db, "receipts"), {
-            title,
-            amount,
-            note,
+            title: document.getElementById('receipt-title').value,
+            amount: Number(document.getElementById('receipt-amount').value),
+            note: document.getElementById('receipt-note').value,
             fileUrl,
             uploadedBy: currentUserName || currentUser.email,
             status: 'pending',
             createdAt: serverTimestamp()
         });
-
-        statusDiv.textContent = "上傳成功！";
+        statusDiv.textContent = "成功！";
         uploadForm.reset();
-        setTimeout(() => statusDiv.textContent = "", 3000);
-    } catch (error) {
-        console.error("上傳失敗:", error);
-        statusDiv.textContent = "上傳失敗，請檢查權限或聯絡管理員。";
+    } catch (err) {
+        statusDiv.textContent = "失敗";
     } finally {
         submitBtn.disabled = false;
     }
 });
 
-// --- 4. 讀取清單 ---
 async function loadReceipts() {
-    if (!receiptsBody) return;
     receiptsBody.innerHTML = '<tr><td colspan="7">載入中...</td></tr>';
-
     try {
         const q = query(collection(db, "receipts"), orderBy("createdAt", "desc"));
-        const querySnapshot = await getDocs(q);
+        const snap = await getDocs(q);
         receiptsBody.innerHTML = '';
-
-        // 檢查是否有審核權限（developer 或以上）
-        const canApprove = hasPermission("developer");
-
-        querySnapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            const date = data.createdAt ? data.createdAt.toDate().toLocaleDateString() : '處理中...';
-            
+        snap.forEach(d => {
+            const data = d.data();
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${data.title}</td>
                 <td>$${data.amount}</td>
                 <td>${data.uploadedBy}</td>
-                <td class="status-${data.status}">${data.status === 'pending' ? '待審核' : '已核准'}</td>
-                <td>${date}</td>
+                <td class="status-${data.status}">${data.status}</td>
+                <td>${data.createdAt?.toDate().toLocaleDateString() || ''}</td>
                 <td><a href="${data.fileUrl}" target="_blank">查看</a></td>
-                <td id="action-${docSnap.id}"></td>
+                <td id="act-${d.id}"></td>
             `;
-
-            // 如果具備審核權限且狀態為 pending，顯示審核按鈕
-            if (canApprove && data.status === 'pending') {
-                const approveBtn = document.createElement('button');
-                approveBtn.textContent = '核准';
-                approveBtn.className = 'approve-btn';
-                approveBtn.onclick = () => approveReceipt(docSnap.id);
-                tr.querySelector(`#action-${docSnap.id}`).appendChild(approveBtn);
+            if (hasPermission("developer") && data.status === 'pending') {
+                const btn = document.createElement('button');
+                btn.textContent = '核准';
+                btn.onclick = () => approveReceipt(d.id);
+                tr.querySelector(`#act-${d.id}`).appendChild(btn);
             }
-
             receiptsBody.appendChild(tr);
         });
-    } catch (error) {
-        console.error("讀取清單失敗:", error);
-        receiptsBody.innerHTML = '<tr><td colspan="7">無法讀取資料，請確認資料庫權限。</td></tr>';
+    } catch (err) { receiptsBody.innerHTML = '讀取失敗'; }
+}
+
+async function approveReceipt(id) {
+    if (confirm("確定核准？")) {
+        await updateDoc(doc(db, "receipts", id), { status: 'approved' });
+        loadReceipts();
     }
 }
 
-// --- 5. 審核功能 ---
-async function approveReceipt(docId) {
-    if (!confirm("確定要核准這張收據嗎？")) return;
+// --- 4. Admin Panel 邏輯 ---
+async function loadMembers() {
+    membersBody.innerHTML = '<tr><td colspan="5">載入中...</td></tr>';
+    try {
+        const snap = await getDocs(collection(db, "member"));
+        allMembers = [];
+        snap.forEach(d => allMembers.push({ id: d.id, ...d.data() }));
+        renderMembers(allMembers);
+    } catch (err) { membersBody.innerHTML = '讀取失敗'; }
+}
+
+function renderMembers(list) {
+    membersBody.innerHTML = '';
+    list.forEach(m => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${m.Name}</td>
+            <td>${m.id}</td>
+            <td><span class="badge badge-role-${m.Role}">${m.Role}</span></td>
+            <td><span class="badge badge-status-${m.Status}">${m.Status}</span></td>
+            <td>
+                <button class="action-btn edit-btn" onclick="openEditMember('${m.id}')">編輯</button>
+                <button class="action-btn toggle-btn" onclick="toggleMemberStatus('${m.id}', '${m.Status}')">
+                    ${m.Status === 'active' ? '停用' : '啟用'}
+                </button>
+            </td>
+        `;
+        membersBody.appendChild(tr);
+    });
+}
+
+// 搜尋與篩選
+[memberSearch, roleFilter].forEach(el => el?.addEventListener('input', () => {
+    const search = memberSearch.value.toLowerCase();
+    const role = roleFilter.value;
+    const filtered = allMembers.filter(m => 
+        (m.Name.toLowerCase().includes(search) || m.id.toLowerCase().includes(search)) &&
+        (role === 'all' || m.Role === role)
+    );
+    renderMembers(filtered);
+}));
+
+// Modal 控制
+addMemberBtn.onclick = () => {
+    memberForm.reset();
+    document.getElementById('edit-mode').value = "false";
+    document.getElementById('m-email').disabled = false;
+    document.getElementById('modal-title').textContent = "新增成員";
+    memberModal.style.display = 'flex';
+};
+closeMemberModal.onclick = () => memberModal.style.display = 'none';
+
+window.openEditMember = async (id) => {
+    const m = allMembers.find(x => x.id === id);
+    if (!m) return;
+    document.getElementById('edit-mode').value = "true";
+    document.getElementById('m-email').value = m.id;
+    document.getElementById('m-email').disabled = true;
+    document.getElementById('m-name').value = m.Name;
+    document.getElementById('m-role').value = m.Role;
+    document.getElementById('m-status').value = m.Status;
+    document.getElementById('modal-title').textContent = "編輯成員";
+    memberModal.style.display = 'flex';
+};
+
+memberForm.onsubmit = async (e) => {
+    e.preventDefault();
+    const isEdit = document.getElementById('edit-mode').value === "true";
+    const email = document.getElementById('m-email').value;
+    const name = document.getElementById('m-name').value;
+    const role = document.getElementById('m-role').value;
+    const status = document.getElementById('m-status').value;
+
+    if (isEdit) {
+        const developers = allMembers.filter(m => m.Role === 'developer' && m.Status === 'active');
+        const target = allMembers.find(m => m.id === email);
+        if (target.Role === 'developer' && role !== 'developer' && developers.length <= 1) {
+            alert("不可移除最後一個有效的 Developer");
+            return;
+        }
+        if (target.Role === 'developer' && status === 'inactive' && developers.length <= 1) {
+            alert("不可停用最後一個 Developer");
+            return;
+        }
+    }
 
     try {
-        const docRef = doc(db, "receipts", docId);
-        await updateDoc(docRef, {
-            status: 'approved'
-        });
-        alert("已核准");
-        loadReceipts(); // 刷新清單
-    } catch (error) {
-        console.error("審核失敗:", error);
-        alert("核准失敗，請稍後再試。");
+        if (!isEdit) {
+            const check = await getDoc(doc(db, "member", email));
+            if (check.exists()) { alert("此 Email 已存在"); return; }
+        }
+        await setDoc(doc(db, "member", email), { Name: name, Role: role, Status: status, Email: email });
+        memberModal.style.display = 'none';
+        loadMembers();
+    } catch (err) { alert("儲存失敗"); }
+};
+
+window.toggleMemberStatus = async (id, currentStatus) => {
+    const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+    const developers = allMembers.filter(m => m.Role === 'developer' && m.Status === 'active');
+    const target = allMembers.find(m => m.id === id);
+    if (target.Role === 'developer' && newStatus === 'inactive' && developers.length <= 1) {
+        alert("不可停用最後一個 Developer");
+        return;
     }
-}
+    await updateDoc(doc(db, "member", id), { Status: newStatus });
+    loadMembers();
+};

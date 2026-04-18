@@ -16,6 +16,7 @@
                 <button class="nav-btn" data-section="upload">上傳收據</button>
                 <button class="nav-btn" data-section="list">收據清單</button>
                 <button class="nav-btn" data-section="floorplan">平面圖</button>
+                <button class="nav-btn" data-section="admin">權限管理</button>
             </nav>
             <div id="auth-section">
                 <span id="user-email"></span>
@@ -91,7 +92,81 @@
                 <p class="hint">如需更新平面圖，請聯繫管理員。</p>
             </div>
         </section>
-    </main>
+        <!-- Admin Panel (管理員專區) -->
+        <section id="section-admin" class="page-section" style="display: none;">
+            <h2>成員權限管理</h2>
+            
+            <!-- 操作與篩選列 -->
+            <div class="admin-actions">
+                <button id="add-member-btn" class="primary-btn">+ 新增成員</button>
+                <div class="search-filter">
+                    <input type="text" id="member-search" placeholder="搜尋名稱或 Email...">
+                    <select id="role-filter">
+                        <option value="all">所有職位</option>
+                        <option value="developer">Developer</option>
+                        <option value="finance">Finance</option>
+                        <option value="member">Member</option>
+                        <option value="guest">Guest</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- 成員表格 -->
+            <div class="table-container">
+                <table id="members-table">
+                    <thead>
+                        <tr>
+                            <th>名稱</th>
+                            <th>Email</th>
+                            <th>職位</th>
+                            <th>狀態</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="members-body">
+                        <!-- 由 JS 動態生成 -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 新增/編輯成員的 Modal -->
+            <div id="member-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <h3 id="modal-title">新增成員</h3>
+                    <form id="member-form">
+                        <input type="hidden" id="edit-mode" value="false">
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" id="m-email" required placeholder="例如：user@gmail.com">
+                        </div>
+                        <div class="form-group">
+                            <label>名稱</label>
+                            <input type="text" id="m-name" required placeholder="使用者顯示名稱">
+                        </div>
+                        <div class="form-group">
+                            <label>職位</label>
+                            <select id="m-role">
+                                <option value="guest">Guest</option>
+                                <option value="member">Member</option>
+                                <option value="finance">Finance</option>
+                                <option value="developer">Developer</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>狀態</label>
+                            <select id="m-status">
+                                <option value="active">使用中 (Active)</option>
+                                <option value="inactive">已停用 (Inactive)</option>
+                            </select>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="cancel-btn" id="close-modal">取消</button>
+                            <button type="submit" class="primary-btn">儲存</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>    </main>
 
     <!-- 這裡使用 type="module" 是為了支援 Firebase 模組化導入 -->
     <script type="module" src="app.js"></script>
