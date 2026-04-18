@@ -7,6 +7,7 @@ import {
 import { 
     collection, 
     addDoc, 
+    getDoc,
     getDocs, 
     updateDoc, 
     doc, 
@@ -21,13 +22,34 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
 // --- 設定 ---
-// TODO: 在這裡加入管理員的 Email 白名單
-const ADMIN_EMAILS = ['choiyinyul721@gmail.com'];
+const ROLE_HIERARCHY = ["guest", "member", "finance", "developer"];
 
 // --- 狀態變數 ---
 let currentUser = null;
+let currentUserRole = "guest";
+let currentUserName = "";
 
-// --- DOM 元素 ---
+// --- 輔助函式 ---
+function hasPermission(requiredRole) {
+    return ROLE_HIERARCHY.indexOf(currentUserRole) >= ROLE_HIERARCHY.indexOf(requiredRole);
+}
+
+function updateNavigationUI() {
+    const uploadBtn = document.querySelector('[data-section="upload"]');
+    const listBtn = document.querySelector('[data-section="list"]');
+    
+    // 上傳功能：需具備 member 權限
+    if (uploadBtn) {
+        uploadBtn.style.display = (currentUser && hasPermission("member")) ? 'inline-block' : 'none';
+    }
+    
+    // 清單功能：需具備 finance 權限
+    if (listBtn) {
+        listBtn.style.display = (currentUser && hasPermission("finance")) ? 'inline-block' : 'none';
+    }
+}
+
+// --- DOM 元素參考 ---
 const navBtns = document.querySelectorAll('.nav-btn');
 const sections = document.querySelectorAll('.page-section');
 const loginBtn = document.getElementById('login-btn');
@@ -58,36 +80,65 @@ navBtns.forEach(btn => {
     });
 });
 
-// --- 2. 身份驗證邏輯 ---
-loginBtn.addEventListener('click', async () => {
-    try {
-        await signInWithPopup(auth, googleProvider);
-    } catch (error) {
+// --- 2. 認證邏輯 ---
+// Google 登入
+loginBtn.addEventListener('click', () => {
+    signInWithPopup(auth, googleProvider).catch((error) => {
         console.error("登入失敗:", error);
         alert("登入失敗，請稍後再試。");
-    }
+    });
 });
 
+// 登出
 logoutBtn.addEventListener('click', () => signOut(auth));
 
-onAuthStateChanged(auth, (user) => {
+// 監聽認證狀態變化（含 Role 邏輯）
+onAuthStateChanged(auth, async (user) => {
     currentUser = user;
+    
     if (user) {
-        userEmailSpan.textContent = user.email;
+        // 讀取 Firestore 中的會員資料
+        try {
+            const memberRef = doc(db, "member", user.email);
+            const memberSnap = await getDoc(memberRef);
+            
+            if (memberSnap.exists()) {
+                const data = memberSnap.data();
+                currentUserName = data.Name || user.email;
+                currentUserRole = data.Role || "guest";
+            } else {
+                currentUserName = user.email;
+                currentUserRole = "guest";
+            }
+        } catch (error) {
+            console.error("權限讀取失敗:", error);
+            currentUserName = user.email;
+            currentUserRole = "guest";
+        }
+
+        // 更新 UI
+        userEmailSpan.textContent = `${currentUserName} (${currentUserRole})`;
         loginBtn.style.display = 'none';
         logoutBtn.style.display = 'inline-block';
         loginWelcome.style.display = 'block';
     } else {
+        // 未登入狀態
+        currentUserRole = "guest";
+        currentUserName = "";
         userEmailSpan.textContent = '';
         loginBtn.style.display = 'inline-block';
         logoutBtn.style.display = 'none';
         loginWelcome.style.display = 'none';
     }
+    
+    // 更新導覽按覽按鈕
+    updateNavigationUI();
 });
 
 // --- 3. 上傳功能 ---
 uploadForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+    
     if (!currentUser) {
         alert("請先登入才能上傳收據");
         return;
@@ -98,26 +149,30 @@ uploadForm.addEventListener('submit', async (e) => {
     const note = document.getElementById('receipt-note').value;
     const file = document.getElementById('receipt-file').files[0];
     const statusDiv = document.getElementById('upload-status');
+    const submitBtn = document.getElementById('submit-upload');
 
-    if (!file) return;
+    if (!file) {
+        alert("請選擇檔案");
+        return;
+    }
 
     try {
         statusDiv.textContent = "正在上傳檔案...";
-        const submitBtn = document.getElementById('submit-upload');
         submitBtn.disabled = true;
 
-        // A. 上傳到 Firebase Storage
-        const fileRef = ref(storage, `receipts/${Date.now()}_${file.name}`);
-        const uploadResult = await uploadBytes(fileRef, file);
-        const fileUrl = await getDownloadURL(uploadResult.ref);
+        // 上傳檔案到 Storage
+        const timestamp = Date.now();
+        const fileRef = ref(storage, `receipts/${currentUser.email}/${timestamp}_${file.name}`);
+        await uploadBytes(fileRef, file);
+        const fileUrl = await getDownloadURL(fileRef);
 
-        // B. 儲存到 Firestore
+        // 儲存收據資訊到 Firestore
         await addDoc(collection(db, "receipts"), {
             title,
             amount,
             note,
             fileUrl,
-            uploadedBy: currentUser.email,
+            uploadedBy: currentUserName || currentUser.email,
             status: 'pending',
             createdAt: serverTimestamp()
         });
@@ -129,7 +184,7 @@ uploadForm.addEventListener('submit', async (e) => {
         console.error("上傳失敗:", error);
         statusDiv.textContent = "上傳失敗，請檢查權限或聯絡管理員。";
     } finally {
-        document.getElementById('submit-upload').disabled = false;
+        submitBtn.disabled = false;
     }
 });
 
@@ -143,7 +198,8 @@ async function loadReceipts() {
         const querySnapshot = await getDocs(q);
         receiptsBody.innerHTML = '';
 
-        const isAdmin = currentUser && ADMIN_EMAILS.includes(currentUser.email);
+        // 檢查是否有審核權限（developer 或以上）
+        const canApprove = hasPermission("developer");
 
         querySnapshot.forEach((docSnap) => {
             const data = docSnap.data();
@@ -160,8 +216,8 @@ async function loadReceipts() {
                 <td id="action-${docSnap.id}"></td>
             `;
 
-            // 如果是管理員且狀態為 pending，顯示審核按鈕
-            if (isAdmin && data.status === 'pending') {
+            // 如果具備審核權限且狀態為 pending，顯示審核按鈕
+            if (canApprove && data.status === 'pending') {
                 const approveBtn = document.createElement('button');
                 approveBtn.textContent = '核准';
                 approveBtn.className = 'approve-btn';
@@ -190,6 +246,6 @@ async function approveReceipt(docId) {
         loadReceipts(); // 刷新清單
     } catch (error) {
         console.error("審核失敗:", error);
-        alert("核准失敗");
+        alert("核准失敗，請稍後再試。");
     }
 }
