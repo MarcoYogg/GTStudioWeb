@@ -1,4 +1,4 @@
-import { auth, db, storage, googleProvider } from './firebase-config.js';
+﻿import { auth, db, storage, googleProvider } from './firebase-config.js';
 import { 
     signInWithPopup, 
     signOut, 
@@ -14,7 +14,9 @@ import {
     doc, 
     query, 
     orderBy, 
-    serverTimestamp 
+    serverTimestamp,
+    onSnapshot,
+    deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { 
     ref, 
@@ -34,6 +36,19 @@ let allMembers = [];
 // --- 輔助函式 ---
 function hasPermission(requiredRole) {
     return ROLE_HIERARCHY.indexOf(currentUserRole) >= ROLE_HIERARCHY.indexOf(requiredRole);
+}
+
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
 }
 
 function updateNavigationUI() {
@@ -58,6 +73,13 @@ const userEmailSpan = document.getElementById('user-email');
 const loginWelcome = document.getElementById('login-welcome');
 const uploadForm = document.getElementById('upload-form');
 const receiptsBody = document.getElementById('receipts-body');
+const receiptModal = document.getElementById('receipt-modal');
+const receiptDetailBody = document.getElementById('receipt-detail-body');
+const closeReceiptModal = document.getElementById('close-receipt-modal');
+
+if (closeReceiptModal) {
+    closeReceiptModal.onclick = () => receiptModal.style.display = 'none';
+}
 
 // Admin 元素
 const membersBody = document.getElementById('members-body');
@@ -80,7 +102,7 @@ navBtns.forEach(btn => {
 
         if (targetSection === 'list') loadReceipts();
         if (targetSection === 'admin') loadMembers();
-        if (targetSection === 'schedule') loadSchedule();
+        if (targetSection === 'schedule') initSchedule();
     });
 });
 
@@ -151,17 +173,17 @@ uploadForm?.addEventListener('submit', async (e) => {
             status: 'pending',
             createdAt: serverTimestamp()
         });
-        statusDiv.textContent = "成功！";
+        showToast("收據上傳成功！", "success");
         uploadForm.reset();
     } catch (err) {
-        statusDiv.textContent = "失敗";
+        showToast("上傳失敗", "error");
     } finally {
         submitBtn.disabled = false;
     }
 });
 
 async function loadReceipts() {
-    receiptsBody.innerHTML = '<tr><td colspan="7">載入中...</td></tr>';
+    receiptsBody.innerHTML = '<tr><td colspan="6">載入中...</td></tr>';
     try {
         const q = query(collection(db, "receipts"), orderBy("createdAt", "desc"));
         const snap = await getDocs(q);
@@ -169,30 +191,80 @@ async function loadReceipts() {
         snap.forEach(d => {
             const data = d.data();
             const tr = document.createElement('tr');
+            
+            // 建立標題連結
+            const titleTd = document.createElement('td');
+            const titleLink = document.createElement('span');
+            titleLink.className = 'title-link';
+            titleLink.textContent = data.title;
+            titleLink.onclick = () => showReceiptDetail(d.id, data);
+            titleTd.appendChild(titleLink);
+
             tr.innerHTML = `
-                <td>${data.title}</td>
                 <td>$${data.amount}</td>
                 <td>${data.uploadedBy}</td>
-                <td class="status-${data.status}">${data.status}</td>
+                <td><span class="badge status-${data.status}">${data.status}</span></td>
                 <td>${data.createdAt?.toDate().toLocaleDateString() || ''}</td>
-                <td><a href="${data.fileUrl}" target="_blank">查看</a></td>
                 <td id="act-${d.id}"></td>
             `;
+            tr.prepend(titleTd);
+
             if ((hasPermission("developer") || hasPermission("finance")) && data.status === 'pending') {
                 const btn = document.createElement('button');
+                btn.className = 'action-btn';
                 btn.textContent = '核准';
                 btn.onclick = () => approveReceipt(d.id);
                 tr.querySelector(`#act-${d.id}`).appendChild(btn);
             }
             receiptsBody.appendChild(tr);
         });
-    } catch (err) { receiptsBody.innerHTML = '讀取失敗'; }
+    } catch (err) { 
+        receiptsBody.innerHTML = '讀取失敗'; 
+        showToast("讀取收據失敗", "error");
+    }
+}
+
+function showReceiptDetail(id, data) {
+    const canApprove = (hasPermission('developer') || hasPermission('finance')) && data.status === 'pending';
+    receiptDetailBody.innerHTML = `
+        <div class="receipt-info">
+            <p><strong>標題：</strong>${data.title}</p>
+            <p><strong>金額：</strong>$${data.amount}</p>
+            <p><strong>上傳者：</strong>${data.uploadedBy}</p>
+            <p><strong>狀態：</strong><span class="badge status-${data.status}">${data.status}</span></p>
+            <p><strong>備註：</strong>${data.note || '無'}</p>
+        </div>
+        <img src="${data.fileUrl}" alt="收據文件">
+    `;
+    // 動態加入核准按鈕
+    const footer = receiptModal.querySelector('.modal-footer');
+    const existingApproveBtn = footer.querySelector('#modal-approve-btn');
+    if (existingApproveBtn) existingApproveBtn.remove();
+    if (canApprove) {
+        const approveBtn = document.createElement('button');
+        approveBtn.id = 'modal-approve-btn';
+        approveBtn.className = 'primary-btn';
+        approveBtn.textContent = '核准收據';
+        approveBtn.onclick = async () => {
+            if (confirm('確定核准此收據？')) {
+                await approveReceipt(id);
+                receiptModal.style.display = 'none';
+            }
+        };
+        footer.prepend(approveBtn);
+    }
+    receiptModal.style.display = 'flex';
 }
 
 async function approveReceipt(id) {
     if (confirm("確定核准？")) {
-        await updateDoc(doc(db, "receipts", id), { status: 'approved' });
-        loadReceipts();
+        try {
+            await updateDoc(doc(db, "receipts", id), { status: 'approved' });
+            showToast("已核准收據", "success");
+            loadReceipts();
+        } catch (err) {
+            showToast("核准失敗", "error");
+        }
     }
 }
 
@@ -305,118 +377,167 @@ window.toggleMemberStatus = async (id, currentStatus) => {
     loadMembers();
 };
 
-// ===== 5. Schedule 邏輯 =====
+// ===== 5. 出席日曆 =====
 
-// 生成未來 14 天日期陣列
-function getNext14Days() {
-    const days = [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    for (let i = 0; i < 14; i++) {
-        const d = new Date(today);
-        d.setDate(today.getDate() + i);
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        days.push(`${yyyy}-${mm}-${dd}`);
-    }
-    return days;
-}
+let calendarYear = new Date().getFullYear();
+let calendarMonth = new Date().getMonth();
+let allPresence = [];
+let allEvents = [];
+let allRsvp = [];
+let scheduleInitialized = false;
+let presenceUnsub = null;
+let eventsUnsub = null;
+let rsvpUnsub = null;
 
-function formatDateLabel(dateStr) {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    const date = new Date(y, m - 1, d);
-    const weekdays = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
-    return `${m}月${d}日 ${weekdays[date.getDay()]}`;
-}
+function initSchedule() {
+    if (scheduleInitialized) { renderCalendar(); return; }
+    scheduleInitialized = true;
 
-let scheduleFilter = 'all';
-let allResponses = [];
+    presenceUnsub = onSnapshot(collection(db, 'scheduleResponses'), snap => {
+        allPresence = [];
+        snap.forEach(d => allPresence.push({ id: d.id, ...d.data() }));
+        renderCalendar();
+        refreshOpenDayModal();
+    });
 
-async function loadSchedule() {
-    const container = document.getElementById('schedule-cards');
-    container.innerHTML = '<p style="color:#999;">載入中...</p>';
+    eventsUnsub = onSnapshot(collection(db, 'events'), snap => {
+        allEvents = [];
+        snap.forEach(d => allEvents.push({ id: d.id, ...d.data() }));
+        renderCalendar();
+        refreshOpenDayModal();
+    });
 
-    try {
-        const snap = await getDocs(collection(db, 'scheduleResponses'));
-        allResponses = [];
-        snap.forEach(d => allResponses.push({ id: d.id, ...d.data() }));
-        renderSchedule();
-    } catch (err) {
-        container.innerHTML = '<p>讀取失敗，請稍後再試</p>';
-        console.error(err);
-    }
-
-    // 筛選按鈕事件
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.onclick = () => {
-            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            scheduleFilter = btn.getAttribute('data-filter');
-            renderSchedule();
-        };
+    rsvpUnsub = onSnapshot(collection(db, 'rsvp'), snap => {
+        allRsvp = [];
+        snap.forEach(d => allRsvp.push({ id: d.id, ...d.data() }));
+        refreshOpenDayModal();
     });
 }
 
-function renderSchedule() {
-    const container = document.getElementById('schedule-cards');
-    container.innerHTML = '';
-    container.className = 'schedule-cards';
+function refreshOpenDayModal() {
+    const modal = document.getElementById('day-modal');
+    if (modal && modal.style.display !== 'none' && modal.dataset.openDate) {
+        renderDayModal(modal.dataset.openDate);
+    }
+}
 
-    let days = getNext14Days();
+function renderCalendar() {
+    const grid = document.getElementById('calendar-grid');
+    const label = document.getElementById('cal-month-label');
+    if (!grid || !label) return;
 
-    // 筛選：未來 7 日
-    if (scheduleFilter === 'week') {
-        days = days.slice(0, 7);
+    label.textContent = `${calendarYear} 年 ${calendarMonth + 1} 月`;
+    const firstDay = new Date(calendarYear, calendarMonth, 1).getDay();
+    const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+    const today = new Date();
+
+    grid.innerHTML = '';
+    grid.className = 'calendar-grid';
+
+    ['日','一','二','三','四','五','六'].forEach(d => {
+        const h = document.createElement('div');
+        h.className = 'cal-header-cell';
+        h.textContent = d;
+        grid.appendChild(h);
+    });
+
+    for (let i = 0; i < firstDay; i++) {
+        const empty = document.createElement('div');
+        empty.className = 'cal-cell cal-empty';
+        grid.appendChild(empty);
     }
 
-    // 筛選：熱門（按 yes 數量排序）
-    if (scheduleFilter === 'popular') {
-        days = [...days].sort((a, b) => {
-            const yesA = allResponses.filter(r => r.date === a && r.response === 'yes').length;
-            const yesB = allResponses.filter(r => r.date === b && r.response === 'yes').length;
-            return yesB - yesA;
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${calendarYear}-${String(calendarMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const yesCount = allPresence.filter(r => r.date === dateStr && r.response === 'yes').length;
+        const eventCount = allEvents.filter(e => e.date === dateStr).length;
+        const isToday = today.getFullYear() === calendarYear && today.getMonth() === calendarMonth && today.getDate() === d;
+        const myResponse = currentUser ? (allPresence.find(r => r.date === dateStr && r.userEmail === currentUser.email)?.response || null) : null;
+
+        const cell = document.createElement('div');
+        cell.className = `cal-cell${isToday ? ' cal-today' : ''}${myResponse === 'yes' ? ' cal-going' : myResponse === 'no' ? ' cal-not-going' : ''}`;
+        const eventsForCell = allEvents.filter(e => e.date === dateStr);
+        const eventNamesHTML = eventsForCell.map(e => `<span class="cal-event-name">● ${e.title}</span>`).join('');
+        cell.innerHTML = `
+            <span class="cal-date-num">${d}</span>
+            ${yesCount > 0 ? `<span class="cal-going-count">👥 ${yesCount}</span>` : ''}
+            ${eventNamesHTML}
+        `;
+        cell.onclick = () => openDayModal(dateStr);
+        grid.appendChild(cell);
+    }
+}
+
+function openDayModal(dateStr) {
+    const modal = document.getElementById('day-modal');
+    modal.dataset.openDate = dateStr;
+    renderDayModal(dateStr);
+    modal.style.display = 'flex';
+}
+
+function renderDayModal(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const weekdays = ['週日','週一','週二','週三','週四','週五','週六'];
+    const date = new Date(y, m-1, d);
+    document.getElementById('day-modal-title').textContent = `${m}月${d}日 ${weekdays[date.getDay()]}`;
+
+    const presenceForDay = allPresence.filter(r => r.date === dateStr);
+    const myResponse = currentUser ? (presenceForDay.find(r => r.userEmail === currentUser.email)?.response || null) : null;
+
+    // 出席區塊
+    let presenceHTML = `<div class="day-section"><h4>出席狀態</h4><div class="member-presence-list">`;
+    const activeMembers = allMembers.filter(mb => mb.Status === 'active');
+    activeMembers.forEach(member => {
+        const resp = presenceForDay.find(r => r.userEmail === member.id);
+        const status = resp?.response || 'unknown';
+        const emoji = status === 'yes' ? '✅' : status === 'no' ? '❌' : '❓';
+        presenceHTML += `<div class="member-presence-item"><span>${emoji}</span><span>${member.Name}</span></div>`;
+    });
+    presenceHTML += `</div>`;
+    if (currentUser) {
+        presenceHTML += `<div class="my-vote-row">
+            <span>我的狀態：</span>
+            <button class="vote-btn vote-btn-yes ${myResponse === 'yes' ? 'selected' : ''}" onclick="castPresence('${dateStr}', 'yes')">✅ 去</button>
+            <button class="vote-btn vote-btn-no ${myResponse === 'no' ? 'selected' : ''}" onclick="castPresence('${dateStr}', 'no')">❌ 不去</button>
+        </div>`;
+    }
+    presenceHTML += `</div>`;
+
+    // 活動區塊
+    const eventsForDay = allEvents.filter(e => e.date === dateStr);
+    let eventsHTML = `<div class="day-section"><h4>活動 ${currentUser ? `<button class="inline-add-btn" onclick="openEventModal('${dateStr}')">+ 新增</button>` : ''}</h4>`;
+    if (eventsForDay.length === 0) {
+        eventsHTML += `<p class="no-events">今天沒有活動</p>`;
+    } else {
+        eventsForDay.forEach(ev => {
+            const myRsvp = currentUser ? (allRsvp.find(r => r.eventId === ev.id && r.userEmail === currentUser.email)?.status || null) : null;
+            const goingCount  = allRsvp.filter(r => r.eventId === ev.id && r.status === 'going').length;
+            const maybeCount  = allRsvp.filter(r => r.eventId === ev.id && r.status === 'maybe').length;
+            const timeLabel = ev.timeStart ? `🕐 ${ev.timeStart}${ev.timeEnd ? ' – ' + ev.timeEnd : ''}` : '';
+            const isCreator = currentUser && currentUser.email === ev.createdBy;
+            eventsHTML += `<div class="event-card">
+                <div class="event-card-header">
+                    <span class="event-card-title">${ev.title}</span>
+                    ${isCreator ? `<button class="delete-event-btn" onclick="deleteEvent('${ev.id}')">刪除</button>` : ''}
+                </div>
+                ${timeLabel ? `<div class="event-meta">${timeLabel}</div>` : ''}
+                ${ev.location ? `<div class="event-meta">📍 ${ev.location}</div>` : ''}
+                ${ev.description ? `<div class="event-meta">${ev.description}</div>` : ''}
+                <div class="event-rsvp-counts">✅ ${goingCount} Going &nbsp;｜&nbsp; 🤔 ${maybeCount} Maybe</div>
+                ${currentUser ? `<div class="rsvp-buttons">
+                    <button class="rsvp-btn ${myRsvp === 'going' ? 'selected' : ''}" onclick="castRsvp('${ev.id}', 'going')">Going</button>
+                    <button class="rsvp-btn ${myRsvp === 'maybe' ? 'selected' : ''}" onclick="castRsvp('${ev.id}', 'maybe')">Maybe</button>
+                    <button class="rsvp-btn rsvp-no ${myRsvp === 'not_going' ? 'selected' : ''}" onclick="castRsvp('${ev.id}', 'not_going')">Not Going</button>
+                </div>` : ''}
+            </div>`;
         });
     }
+    eventsHTML += `</div>`;
 
-    days.forEach(dateStr => {
-        const responses = allResponses.filter(r => r.date === dateStr);
-        const yesCount   = responses.filter(r => r.response === 'yes').length;
-        const maybeCount = responses.filter(r => r.response === 'maybe').length;
-        const noCount    = responses.filter(r => r.response === 'no').length;
-        const attendees  = responses.filter(r => r.response === 'yes').map(r => r.userName).join('、');
-
-        const myResponse = currentUser
-            ? (responses.find(r => r.userEmail === currentUser.email)?.response || null)
-            : null;
-
-        const card = document.createElement('div');
-        card.className = 'date-card';
-
-        const disabledAttr = currentUser ? '' : 'disabled';
-
-        card.innerHTML = `
-            <div class="date-card-header">
-                <span class="date-card-title">${formatDateLabel(dateStr)}</span>
-                <div class="response-badges">
-                    <span class="rbadge rbadge-yes">✔ ${yesCount}</span>
-                    <span class="rbadge rbadge-maybe">? ${maybeCount}</span>
-                    <span class="rbadge rbadge-no">✖ ${noCount}</span>
-                </div>
-            </div>
-            <div class="attendees-list">${attendees ? '會去：' + attendees : '暫無人回覆會去'}</div>
-            <div class="vote-buttons">
-                <button class="vote-btn vote-btn-yes ${myResponse === 'yes' ? 'selected' : ''}" ${disabledAttr} onclick="castVote('${dateStr}', 'yes')">會去</button>
-                <button class="vote-btn vote-btn-maybe ${myResponse === 'maybe' ? 'selected' : ''}" ${disabledAttr} onclick="castVote('${dateStr}', 'maybe')">可能去</button>
-                <button class="vote-btn vote-btn-no ${myResponse === 'no' ? 'selected' : ''}" ${disabledAttr} onclick="castVote('${dateStr}', 'no')">不去</button>
-            </div>
-            ${!currentUser ? '<p class="login-hint">請登入後才能投票</p>' : ''}
-        `;
-        container.appendChild(card);
-    });
+    document.getElementById('day-modal-body').innerHTML = presenceHTML + eventsHTML;
 }
 
-window.castVote = async (dateStr, response) => {
+window.castPresence = async (dateStr, response) => {
     if (!currentUser) return;
     const docId = `${dateStr}_${currentUser.email}`;
     try {
@@ -427,14 +548,82 @@ window.castVote = async (dateStr, response) => {
             response,
             updatedAt: serverTimestamp()
         });
-        // 更新本地快照再重繪
-        const idx = allResponses.findIndex(r => r.id === docId);
-        const entry = { id: docId, date: dateStr, userEmail: currentUser.email, userName: currentUserName || currentUser.email, response };
-        if (idx >= 0) allResponses[idx] = entry;
-        else allResponses.push(entry);
-        renderSchedule();
     } catch (err) {
-        alert('投票失敗，請稍後再試');
-        console.error(err);
+        showToast('更新失敗', 'error');
     }
 };
+
+window.castRsvp = async (eventId, status) => {
+    if (!currentUser) return;
+    const docId = `${eventId}_${currentUser.email}`;
+    try {
+        await setDoc(doc(db, 'rsvp', docId), {
+            eventId,
+            userEmail: currentUser.email,
+            status,
+            updatedAt: serverTimestamp()
+        });
+    } catch (err) {
+        showToast('RSVP 失敗', 'error');
+    }
+};
+
+window.deleteEvent = async (eventId) => {
+    if (!currentUser) return;
+    if (!confirm('確定要刪除這個活動嗎？')) return;
+    try {
+        await deleteDoc(doc(db, 'events', eventId));
+        showToast('活動已刪除', 'info');
+    } catch (err) {
+        showToast('刪除失敗', 'error');
+    }
+};
+
+window.openEventModal = (dateStr) => {
+    document.getElementById('event-form').reset();
+    if (dateStr) document.getElementById('ev-date').value = dateStr;
+    document.getElementById('event-modal').style.display = 'flex';
+};
+
+document.getElementById('cal-prev')?.addEventListener('click', () => {
+    calendarMonth--;
+    if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
+    renderCalendar();
+});
+document.getElementById('cal-next')?.addEventListener('click', () => {
+    calendarMonth++;
+    if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; }
+    renderCalendar();
+});
+document.getElementById('create-event-btn')?.addEventListener('click', () => openEventModal(null));
+document.getElementById('close-day-modal')?.addEventListener('click', () => {
+    document.getElementById('day-modal').style.display = 'none';
+});
+document.getElementById('close-event-modal')?.addEventListener('click', () => {
+    document.getElementById('event-modal').style.display = 'none';
+});
+document.getElementById('event-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!currentUser) return;
+    const submitBtn = e.target.querySelector('[type=submit]');
+    submitBtn.disabled = true;
+    try {
+        await addDoc(collection(db, 'events'), {
+            title: document.getElementById('ev-title').value,
+            date: document.getElementById('ev-date').value,
+            timeStart: document.getElementById('ev-time-start').value,
+            timeEnd: document.getElementById('ev-time-end').value,
+            location: document.getElementById('ev-location').value,
+            description: document.getElementById('ev-desc').value,
+            createdBy: currentUser.email,
+            createdAt: serverTimestamp()
+        });
+        showToast('活動已建立！', 'success');
+        document.getElementById('event-modal').style.display = 'none';
+    } catch (err) {
+        showToast('建立失敗', 'error');
+    } finally {
+        submitBtn.disabled = false;
+    }
+});
+

@@ -13,6 +13,9 @@
         <p>載入中...</p>
     </div>
 
+    <!-- Toast 通知容器 -->
+    <div id="toast-container"></div>
+
     <header>
         <div class="header-container">
             <h1>GT Studio</h1>
@@ -79,7 +82,6 @@
                             <th>上傳者</th>
                             <th>狀態</th>
                             <th>日期</th>
-                            <th>檔案</th>
                             <th>操作</th>
                         </tr>
                     </thead>
@@ -87,6 +89,19 @@
                         <!-- 資料將由 JS 動態生成 -->
                     </tbody>
                 </table>
+            </div>
+
+            <!-- 收據詳情 Modal -->
+            <div id="receipt-modal" class="modal" style="display: none;">
+                <div class="modal-content receipt-detail-content">
+                    <h3>收據詳情</h3>
+                    <div id="receipt-detail-body">
+                        <!-- 由 JS 動態生成內容 -->
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="cancel-btn" id="close-receipt-modal">關閉</button>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -98,17 +113,66 @@
                 <p class="hint">如需更新平面圖，請聯繫管理員。</p>
             </div>
         </section>
-        <!-- Schedule / 出席意向 -->
+        <!-- Schedule / 出席日曆 -->
         <section id="section-schedule" class="page-section" style="display: none;">
             <div class="schedule-header">
-                <h2>出席意向</h2>
-                <div class="schedule-filters">
-                    <button class="filter-btn active" data-filter="all">全部</button>
-                    <button class="filter-btn" data-filter="week">未來 7 日</button>
-                    <button class="filter-btn" data-filter="popular">熱門</button>
+                <h2>出席日曆</h2>
+                <div class="calendar-nav">
+                    <button id="cal-prev" class="cal-nav-btn">‹</button>
+                    <span id="cal-month-label"></span>
+                    <button id="cal-next" class="cal-nav-btn">›</button>
+                </div>
+                <button id="create-event-btn" class="primary-btn">+ 新增活動</button>
+            </div>
+            <div id="calendar-grid"></div>
+
+            <!-- 日詳情 Modal -->
+            <div id="day-modal" class="modal" style="display: none;">
+                <div class="modal-content day-modal-content">
+                    <h3 id="day-modal-title"></h3>
+                    <div id="day-modal-body"></div>
+                    <div class="modal-footer">
+                        <button type="button" class="cancel-btn" id="close-day-modal">關閉</button>
+                    </div>
                 </div>
             </div>
-            <div id="schedule-cards"></div>
+
+            <!-- 新增活動 Modal -->
+            <div id="event-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <h3>新增活動</h3>
+                    <form id="event-form">
+                        <div class="form-group">
+                            <label>標題</label>
+                            <input type="text" id="ev-title" required placeholder="活動名稱">
+                        </div>
+                        <div class="form-group">
+                            <label>日期</label>
+                            <input type="date" id="ev-date" required>
+                        </div>
+                        <div class="form-group">
+                            <label>開始時間</label>
+                            <input type="time" id="ev-time-start">
+                        </div>
+                        <div class="form-group">
+                            <label>結束時間</label>
+                            <input type="time" id="ev-time-end">
+                        </div>
+                        <div class="form-group">
+                            <label>地點</label>
+                            <input type="text" id="ev-location" placeholder="GT Studio / 其他">
+                        </div>
+                        <div class="form-group">
+                            <label>描述</label>
+                            <textarea id="ev-desc" rows="2" placeholder="活動說明..."></textarea>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="cancel-btn" id="close-event-modal">取消</button>
+                            <button type="submit" class="primary-btn">建立活動</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </section>
 
         <!-- Admin Panel (管理員專區) -->

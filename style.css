@@ -392,3 +392,240 @@ th {
     color: #999;
     margin-top: 8px;
 }
+
+/* ===== 出席日曆 ===== */
+.schedule-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+.calendar-nav {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+#cal-month-label {
+    font-size: 1.1em;
+    font-weight: 600;
+    min-width: 110px;
+    text-align: center;
+}
+.cal-nav-btn {
+    background: none;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 4px 14px;
+    font-size: 1.3em;
+    cursor: pointer;
+    line-height: 1;
+}
+.cal-nav-btn:hover { background: #f0f0f0; }
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+}
+.cal-header-cell {
+    text-align: center;
+    font-weight: 600;
+    padding: 8px 0;
+    color: #888;
+    font-size: 0.9em;
+}
+.cal-cell {
+    min-height: 72px;
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    padding: 6px 8px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.cal-cell:hover { background: #f0f4ff; border-color: #3498db; }
+.cal-empty { background: none; border: none; cursor: default; }
+.cal-empty:hover { background: none; border: none; }
+.cal-today { border-color: #3498db; background: #eaf4ff; }
+.cal-going { border-color: #2ecc71; }
+.cal-not-going { opacity: 0.6; }
+.cal-date-num {
+    display: block;
+    font-weight: 600;
+    font-size: 1em;
+    margin-bottom: 4px;
+}
+.cal-going-count { display: block; font-size: 0.75em; color: #27ae60; }
+.cal-event-name {
+    display: block;
+    font-size: 0.72em;
+    color: #3498db;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
+}
+
+/* 日詳情 Modal */
+.day-modal-content {
+    max-width: 560px !important;
+    width: 92vw !important;
+    max-height: 85vh;
+    overflow-y: auto;
+}
+.day-section { margin-bottom: 20px; }
+.day-section h4 {
+    font-size: 1em;
+    color: #555;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.inline-add-btn {
+    background: none;
+    border: 1px solid #3498db;
+    color: #3498db;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.8em;
+    cursor: pointer;
+}
+.member-presence-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.member-presence-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9em;
+}
+.my-vote-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+.no-events { color: #aaa; font-size: 0.9em; }
+.event-card {
+    background: #f9f9f9;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 10px;
+}
+.event-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 4px;
+}
+.event-card-title { font-weight: 600; }
+.event-meta { font-size: 0.85em; color: #666; margin-bottom: 2px; }
+.event-rsvp-counts { font-size: 0.82em; color: #888; margin: 6px 0 4px; }
+.delete-event-btn {
+    background: none;
+    border: 1px solid #e74c3c;
+    color: #e74c3c;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.78em;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.delete-event-btn:hover { background: #e74c3c; color: #fff; }
+.rsvp-buttons { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.rsvp-btn {
+    padding: 4px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 0.85em;
+    transition: all 0.15s;
+}
+.rsvp-btn.selected { background: #3498db; color: #fff; border-color: #3498db; }
+.rsvp-no.selected { background: #e74c3c; border-color: #e74c3c; }
+
+/* Toast 通知系統 */
+#toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+}
+.toast {
+    background: #333;
+    color: #fff;
+    padding: 12px 24px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    animation: slideIn 0.3s ease-out;
+    min-width: 200px;
+}
+.toast-success { background: #2ecc71; }
+.toast-error { background: #e74c3c; }
+.toast-info { background: #3498db; }
+@keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+/* 收據詳情樣式 */
+.title-link {
+    color: #3498db;
+    cursor: pointer;
+    text-decoration: underline;
+}
+.receipt-detail-content {
+    max-width: 80vw !important;
+    width: 80vw !important;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+.receipt-detail-content img {
+    display: block;
+    width: 100%;
+    max-height: 65vh;
+    object-fit: contain;
+    margin-top: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    background: #f0f0f0;
+}
+.receipt-info {
+    padding: 15px;
+    background: #f9f9f9;
+    border-radius: 8px;
+    margin-top: 10px;
+}
+.receipt-info p {
+    margin: 5px 0;
+}
+
+/* 行動裝置優化 */
+@media (max-width: 768px) {
+    #top-nav {
+        display: flex;
+        overflow-x: auto;
+        white-space: nowrap;
+        padding-bottom: 10px;
+        -webkit-overflow-scrolling: touch;
+    }
+    .header-container {
+        flex-direction: column;
+        align-items: center;
+    }
+    .table-container {
+        overflow-x: auto;
+    }
+    .page-section {
+        padding: 10px;
+    }
+}
