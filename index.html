@@ -181,6 +181,7 @@
             <!-- 操作與篩選列 -->
             <div class="admin-actions">
                 <button id="add-member-btn" class="primary-btn">+ 新增成員</button>
+                <button id="manage-roles-btn" class="secondary-btn">⚙️ 角色權限設定</button>
                 <div class="search-filter">
                     <input type="text" id="member-search" placeholder="搜尋名稱或 Email...">
                     <select id="role-filter">
@@ -190,6 +191,33 @@
                         <option value="member">Member</option>
                         <option value="guest">Guest</option>
                     </select>
+                </div>
+            </div>
+
+            <!-- 角色權限設定 Modal -->
+            <div id="roles-modal" class="modal" style="display: none;">
+                <div class="modal-content" style="max-width: 600px;">
+                    <h3>角色權限設定</h3>
+                    <p style="font-size: 0.8em; color: #666; margin-bottom: 15px;">Developer 預設擁有所有權限且無法修改。</p>
+                    <div class="table-container">
+                        <table id="roles-table">
+                            <thead>
+                                <tr>
+                                    <th>權限名稱</th>
+                                    <th>Guest</th>
+                                    <th>Member</th>
+                                    <th>Finance</th>
+                                </tr>
+                            </thead>
+                            <tbody id="roles-body">
+                                <!-- 由 JS 動態生成 -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="cancel-btn" id="close-roles-modal">取消</button>
+                        <button type="button" class="primary-btn" id="save-roles-btn">儲存設定</button>
+                    </div>
                 </div>
             </div>
 

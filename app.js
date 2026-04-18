@@ -27,15 +27,63 @@ import {
 // --- 設定 ---
 const ROLE_HIERARCHY = ["guest", "member", "finance", "developer"];
 
+// 預設權限表 (可擴充)
+const DEFAULT_PERMISSIONS = {
+    "guest": {
+        "can_view_receipts": false,
+        "can_upload_receipts": false,
+        "can_approve_receipts": false,
+        "can_manage_members": false,
+        "can_view_tickets": false,
+        "can_report_tickets": false,
+        "can_manage_tickets": false,
+        "can_view_schedule": true,
+        "can_rsvp": false
+    },
+    "member": {
+        "can_view_receipts": true,
+        "can_upload_receipts": true,
+        "can_approve_receipts": false,
+        "can_manage_members": false,
+        "can_view_tickets": true,
+        "can_report_tickets": true,
+        "can_manage_tickets": false,
+        "can_view_schedule": true,
+        "can_rsvp": true
+    },
+    "finance": {
+        "can_view_receipts": true,
+        "can_upload_receipts": true,
+        "can_approve_receipts": true,
+        "can_manage_members": false,
+        "can_view_tickets": true,
+        "can_report_tickets": true,
+        "can_manage_tickets": false,
+        "can_view_schedule": true,
+        "can_rsvp": true
+    }
+};
+
 // --- 狀態變數 ---
 let currentUser = null;
 let currentUserRole = "guest";
+let currentPermissions = { ...DEFAULT_PERMISSIONS["guest"] };
+let globalPermissionsMap = { ...DEFAULT_PERMISSIONS };
 let currentUserName = "";
 let allMembers = [];
 
 // --- 輔助函式 ---
-function hasPermission(requiredRole) {
-    return ROLE_HIERARCHY.indexOf(currentUserRole) >= ROLE_HIERARCHY.indexOf(requiredRole);
+function hasPermission(permissionName) {
+    // developer 永遠擁有所有權限
+    if (currentUserRole === "developer") return true;
+    
+    // 如果是舊有的角色名稱檢查，為了相容性暫時保留 (慢慢替換掉)
+    if (ROLE_HIERARCHY.includes(permissionName)) {
+        return ROLE_HIERARCHY.indexOf(currentUserRole) >= ROLE_HIERARCHY.indexOf(permissionName);
+    }
+
+    // 檢查新版權限
+    return currentPermissions[permissionName] === true;
 }
 
 function showToast(message, type = 'info') {
@@ -55,13 +103,14 @@ function updateNavigationUI() {
     const uploadBtn = document.querySelector('[data-section="upload"]');
     const listBtn = document.querySelector('[data-section="list"]');
     const adminBtn = document.querySelector('[data-section="admin"]');
-    
+    const ticketsBtn = document.querySelector('[data-section="tickets"]');
     const scheduleBtn = document.querySelector('[data-section="schedule"]');
 
-    if (uploadBtn) uploadBtn.style.display = (currentUser && hasPermission("member")) ? 'inline-block' : 'none';
-    if (listBtn) listBtn.style.display = (currentUser && hasPermission("finance")) ? 'inline-block' : 'none';
+    if (uploadBtn) uploadBtn.style.display = (currentUser && hasPermission("can_upload_receipts")) ? 'inline-block' : 'none';
+    if (listBtn) listBtn.style.display = (currentUser && hasPermission("can_view_receipts")) ? 'inline-block' : 'none';
     if (adminBtn) adminBtn.style.display = (currentUser && hasPermission("developer")) ? 'inline-block' : 'none';
-    if (scheduleBtn) scheduleBtn.style.display = currentUser ? 'inline-block' : 'none';
+    if (scheduleBtn) scheduleBtn.style.display = (currentUser && hasPermission("can_view_schedule")) ? 'inline-block' : 'none';
+    if (ticketsBtn) ticketsBtn.style.display = (currentUser && hasPermission("can_view_tickets")) ? 'inline-block' : 'none';
 }
 
 // --- DOM 元素參考 ---
@@ -90,6 +139,24 @@ const addMemberBtn = document.getElementById('add-member-btn');
 const memberSearch = document.getElementById('member-search');
 const roleFilter = document.getElementById('role-filter');
 
+// 角色權限設定元素
+const manageRolesBtn = document.getElementById('manage-roles-btn');
+const rolesModal = document.getElementById('roles-modal');
+const closeRolesModal = document.getElementById('close-roles-modal');
+const rolesBody = document.getElementById('roles-body');
+const saveRolesBtn = document.getElementById('save-roles-btn');
+
+const PERMISSION_LABELS = {
+    "can_view_receipts": "查看收據列表",
+    "can_upload_receipts": "上傳收據",
+    "can_approve_receipts": "核准收據",
+    "can_view_tickets": "查看問題回報",
+    "can_report_tickets": "新增問題回報",
+    "can_manage_tickets": "管理問題回報",
+    "can_view_schedule": "查看出席日曆",
+    "can_rsvp": "標記出席回報"
+};
+
 // --- 1. 導覽邏輯 ---
 navBtns.forEach(btn => {
     btn.addEventListener('click', () => {
@@ -117,6 +184,12 @@ onAuthStateChanged(auth, async (user) => {
     currentUser = user;
     if (user) {
         try {
+            // 讀取權限設定
+            const configSnap = await getDoc(doc(db, "config", "permissions"));
+            if (configSnap.exists()) {
+                globalPermissionsMap = { ...DEFAULT_PERMISSIONS, ...configSnap.data() };
+            }
+
             const memberSnap = await getDoc(doc(db, "member", user.email));
             if (memberSnap.exists()) {
                 const data = memberSnap.data();
@@ -126,8 +199,14 @@ onAuthStateChanged(auth, async (user) => {
                 currentUserName = user.email;
                 currentUserRole = "guest";
             }
+            
+            // 更新當前權限
+            currentPermissions = globalPermissionsMap[currentUserRole] || globalPermissionsMap["guest"];
+            
         } catch (err) {
+            console.error("讀取權限/使用者失敗:", err);
             currentUserRole = "guest";
+            currentPermissions = globalPermissionsMap["guest"];
         }
         userEmailSpan.textContent = `${currentUserName} (${currentUserRole})`;
         loginBtn.style.display = 'none';
@@ -135,6 +214,7 @@ onAuthStateChanged(auth, async (user) => {
         loginWelcome.style.display = 'block';
     } else {
         currentUserRole = "guest";
+        currentPermissions = globalPermissionsMap["guest"];
         currentUserName = "";
         userEmailSpan.textContent = '';
         loginBtn.style.display = 'inline-block';
@@ -149,7 +229,63 @@ onAuthStateChanged(auth, async (user) => {
     if (overlay) overlay.style.display = 'none';
 });
 
-// --- 3. 收據邏輯 ---
+// --- 6. 權限管理邏輯 ---
+manageRolesBtn.onclick = () => {
+    renderRolesTable();
+    rolesModal.style.display = 'flex';
+};
+
+closeRolesModal.onclick = () => rolesModal.style.display = 'none';
+
+function renderRolesTable() {
+    rolesBody.innerHTML = '';
+    const roles = ["guest", "member", "finance"];
+    const perms = Object.keys(PERMISSION_LABELS);
+
+    perms.forEach(pKey => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${PERMISSION_LABELS[pKey]}</td>`;
+        
+        roles.forEach(role => {
+            const td = document.createElement('td');
+            const checked = globalPermissionsMap[role][pKey] ? 'checked' : '';
+            td.innerHTML = `<input type="checkbox" data-role="${role}" data-perm="${pKey}" ${checked}>`;
+            tr.appendChild(td);
+        });
+        rolesBody.appendChild(tr);
+    });
+}
+
+saveRolesBtn.onclick = async () => {
+    const newMap = JSON.parse(JSON.stringify(globalPermissionsMap)); 
+    const checkboxes = rolesBody.querySelectorAll('input[type="checkbox"]');
+    
+    checkboxes.forEach(cb => {
+        const role = cb.getAttribute('data-role');
+        const perm = cb.getAttribute('data-perm');
+        newMap[role][perm] = cb.checked;
+    });
+
+    try {
+        saveRolesBtn.disabled = true;
+        saveRolesBtn.textContent = "儲存中...";
+        await setDoc(doc(db, "config", "permissions"), newMap);
+        globalPermissionsMap = newMap;
+        
+        // 如果當前用戶的角色被修改了，即時生效
+        currentPermissions = globalPermissionsMap[currentUserRole] || globalPermissionsMap["guest"];
+        updateNavigationUI();
+        
+        showToast("權限設定已更新", "success");
+        rolesModal.style.display = 'none';
+    } catch (err) {
+        console.error(err);
+        showToast("儲存失敗", "error");
+    } finally {
+        saveRolesBtn.disabled = false;
+        saveRolesBtn.textContent = "儲存設定";
+    }
+};
 uploadForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const file = document.getElementById('receipt-file').files[0];
@@ -210,7 +346,7 @@ async function loadReceipts() {
             `;
             tr.prepend(titleTd);
 
-            if ((hasPermission("developer") || hasPermission("finance")) && data.status === 'pending') {
+            if (hasPermission("can_approve_receipts") && data.status === 'pending') {
                 const btn = document.createElement('button');
                 btn.className = 'action-btn';
                 btn.textContent = '核准';
@@ -226,7 +362,7 @@ async function loadReceipts() {
 }
 
 function showReceiptDetail(id, data) {
-    const canApprove = (hasPermission('developer') || hasPermission('finance')) && data.status === 'pending';
+    const canApprove = hasPermission('can_approve_receipts') && data.status === 'pending';
     receiptDetailBody.innerHTML = `
         <div class="receipt-info">
             <p><strong>標題：</strong>${data.title}</p>
@@ -495,7 +631,7 @@ function renderDayModal(dateStr) {
         presenceHTML += `<div class="member-presence-item"><span>${emoji}</span><span>${member.Name}</span></div>`;
     });
     presenceHTML += `</div>`;
-    if (currentUser) {
+    if (currentUser && hasPermission('can_rsvp')) {
         presenceHTML += `<div class="my-vote-row">
             <span>我的狀態：</span>
             <button class="vote-btn vote-btn-yes ${myResponse === 'yes' ? 'selected' : ''}" onclick="castPresence('${dateStr}', 'yes')">✅ 去</button>
@@ -506,7 +642,7 @@ function renderDayModal(dateStr) {
 
     // 活動區塊
     const eventsForDay = allEvents.filter(e => e.date === dateStr);
-    let eventsHTML = `<div class="day-section"><h4>活動 ${currentUser ? `<button class="inline-add-btn" onclick="openEventModal('${dateStr}')">+ 新增</button>` : ''}</h4>`;
+    let eventsHTML = `<div class="day-section"><h4>活動 ${hasPermission('developer') ? `<button class="inline-add-btn" onclick="openEventModal('${dateStr}')">+ 新增</button>` : ''}</h4>`;
     if (eventsForDay.length === 0) {
         eventsHTML += `<p class="no-events">今天沒有活動</p>`;
     } else {
@@ -677,8 +813,8 @@ function renderTickets() {
     const statusLabel = { open: 'Open', in_progress: 'In Progress', resolved: 'Resolved' };
 
     list.innerHTML = filtered.map(t => {
-        const canChangeStatus = hasPermission('developer');
-        const canDelete = currentUser && (currentUser.email === t.createdBy || hasPermission('developer'));
+        const canChangeStatus = hasPermission('can_manage_tickets');
+        const canDelete = currentUser && (currentUser.email === t.createdBy || hasPermission('can_manage_tickets'));
         const date = t.createdAt?.toDate().toLocaleDateString() || '';
 
         const statusOptions = ['open', 'in_progress', 'resolved']
