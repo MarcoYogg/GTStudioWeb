@@ -173,7 +173,7 @@ async function loadReceipts() {
                 <td><a href="${data.fileUrl}" target="_blank">查看</a></td>
                 <td id="act-${d.id}"></td>
             `;
-            if (hasPermission("developer") && data.status === 'pending') {
+            if ((hasPermission("developer") || hasPermission("finance")) && data.status === 'pending') {
                 const btn = document.createElement('button');
                 btn.textContent = '核准';
                 btn.onclick = () => approveReceipt(d.id);
