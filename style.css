@@ -191,7 +191,7 @@ th {
     }
 }
 
-/* Admin Panel �˦� */
+/* Admin Panel �˦� */
 .admin-actions {
     display: flex;
     justify-content: space-between;
@@ -257,4 +257,104 @@ th {
     padding: 8px 30px;
     border-radius: 4px;
     cursor: pointer;
+}
+
+/* ===== Schedule 樣式 ===== */
+.schedule-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.schedule-filters {
+    display: flex;
+    gap: 8px;
+}
+.filter-btn {
+    padding: 6px 14px;
+    border: 1px solid #ccc;
+    border-radius: 20px;
+    background: white;
+    cursor: pointer;
+    font-size: 0.9em;
+}
+.filter-btn.active {
+    background: #1976d2;
+    color: white;
+    border-color: #1976d2;
+}
+.schedule-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.date-card {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 16px 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+.date-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.date-card-title {
+    font-size: 1.1em;
+    font-weight: bold;
+    color: #212121;
+}
+.response-badges {
+    display: flex;
+    gap: 6px;
+}
+.rbadge {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.82em;
+    font-weight: bold;
+}
+.rbadge-yes  { background: #e8f5e9; color: #2e7d32; }
+.rbadge-maybe{ background: #fff3e0; color: #e65100; }
+.rbadge-no   { background: #f5f5f5; color: #757575; }
+.attendees-list {
+    font-size: 0.85em;
+    color: #555;
+    margin-bottom: 12px;
+    min-height: 18px;
+}
+.vote-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.vote-btn {
+    flex: 1;
+    min-width: 80px;
+    min-height: 44px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    background: white;
+    cursor: pointer;
+    font-size: 0.9em;
+    font-weight: bold;
+    transition: background 0.15s, border-color 0.15s;
+}
+.vote-btn:disabled { opacity: 0.5; cursor: default; }
+.vote-btn-yes.selected  { background: #2e7d32; color: white; border-color: #2e7d32; }
+.vote-btn-maybe.selected{ background: #e65100; color: white; border-color: #e65100; }
+.vote-btn-no.selected   { background: #757575; color: white; border-color: #757575; }
+.vote-btn-yes:not(.selected):hover  { border-color: #2e7d32; color: #2e7d32; }
+.vote-btn-maybe:not(.selected):hover{ border-color: #e65100; color: #e65100; }
+.vote-btn-no:not(.selected):hover   { border-color: #757575; color: #757575; }
+.login-hint {
+    font-size: 0.85em;
+    color: #999;
+    margin-top: 8px;
 }

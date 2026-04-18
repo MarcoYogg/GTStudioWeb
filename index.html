@@ -16,6 +16,7 @@
                 <button class="nav-btn" data-section="upload">上傳收據</button>
                 <button class="nav-btn" data-section="list">收據清單</button>
                 <button class="nav-btn" data-section="floorplan">平面圖</button>
+                <button class="nav-btn" data-section="schedule">Schedule</button>
                 <button class="nav-btn" data-section="admin">權限管理</button>
             </nav>
             <div id="auth-section">
@@ -92,6 +93,19 @@
                 <p class="hint">如需更新平面圖，請聯繫管理員。</p>
             </div>
         </section>
+        <!-- Schedule / 出席意向 -->
+        <section id="section-schedule" class="page-section" style="display: none;">
+            <div class="schedule-header">
+                <h2>出席意向</h2>
+                <div class="schedule-filters">
+                    <button class="filter-btn active" data-filter="all">全部</button>
+                    <button class="filter-btn" data-filter="week">未來 7 日</button>
+                    <button class="filter-btn" data-filter="popular">熱門</button>
+                </div>
+            </div>
+            <div id="schedule-cards"></div>
+        </section>
+
         <!-- Admin Panel (管理員專區) -->
         <section id="section-admin" class="page-section" style="display: none;">
             <h2>成員權限管理</h2>

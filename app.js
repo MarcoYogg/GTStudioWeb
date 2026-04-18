@@ -41,9 +41,12 @@ function updateNavigationUI() {
     const listBtn = document.querySelector('[data-section="list"]');
     const adminBtn = document.querySelector('[data-section="admin"]');
     
+    const scheduleBtn = document.querySelector('[data-section="schedule"]');
+
     if (uploadBtn) uploadBtn.style.display = (currentUser && hasPermission("member")) ? 'inline-block' : 'none';
     if (listBtn) listBtn.style.display = (currentUser && hasPermission("finance")) ? 'inline-block' : 'none';
     if (adminBtn) adminBtn.style.display = (currentUser && hasPermission("developer")) ? 'inline-block' : 'none';
+    if (scheduleBtn) scheduleBtn.style.display = currentUser ? 'inline-block' : 'none';
 }
 
 // --- DOM 元素參考 ---
@@ -77,6 +80,7 @@ navBtns.forEach(btn => {
 
         if (targetSection === 'list') loadReceipts();
         if (targetSection === 'admin') loadMembers();
+        if (targetSection === 'schedule') loadSchedule();
     });
 });
 
@@ -294,4 +298,138 @@ window.toggleMemberStatus = async (id, currentStatus) => {
     }
     await updateDoc(doc(db, "member", id), { Status: newStatus });
     loadMembers();
+};
+
+// ===== 5. Schedule 邏輯 =====
+
+// 生成未來 14 天日期陣列
+function getNext14Days() {
+    const days = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    for (let i = 0; i < 14; i++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() + i);
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        days.push(`${yyyy}-${mm}-${dd}`);
+    }
+    return days;
+}
+
+function formatDateLabel(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    const weekdays = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+    return `${m}月${d}日 ${weekdays[date.getDay()]}`;
+}
+
+let scheduleFilter = 'all';
+let allResponses = [];
+
+async function loadSchedule() {
+    const container = document.getElementById('schedule-cards');
+    container.innerHTML = '<p style="color:#999;">載入中...</p>';
+
+    try {
+        const snap = await getDocs(collection(db, 'scheduleResponses'));
+        allResponses = [];
+        snap.forEach(d => allResponses.push({ id: d.id, ...d.data() }));
+        renderSchedule();
+    } catch (err) {
+        container.innerHTML = '<p>讀取失敗，請稍後再試</p>';
+        console.error(err);
+    }
+
+    // 筛選按鈕事件
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.onclick = () => {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            scheduleFilter = btn.getAttribute('data-filter');
+            renderSchedule();
+        };
+    });
+}
+
+function renderSchedule() {
+    const container = document.getElementById('schedule-cards');
+    container.innerHTML = '';
+    container.className = 'schedule-cards';
+
+    let days = getNext14Days();
+
+    // 筛選：未來 7 日
+    if (scheduleFilter === 'week') {
+        days = days.slice(0, 7);
+    }
+
+    // 筛選：熱門（按 yes 數量排序）
+    if (scheduleFilter === 'popular') {
+        days = [...days].sort((a, b) => {
+            const yesA = allResponses.filter(r => r.date === a && r.response === 'yes').length;
+            const yesB = allResponses.filter(r => r.date === b && r.response === 'yes').length;
+            return yesB - yesA;
+        });
+    }
+
+    days.forEach(dateStr => {
+        const responses = allResponses.filter(r => r.date === dateStr);
+        const yesCount   = responses.filter(r => r.response === 'yes').length;
+        const maybeCount = responses.filter(r => r.response === 'maybe').length;
+        const noCount    = responses.filter(r => r.response === 'no').length;
+        const attendees  = responses.filter(r => r.response === 'yes').map(r => r.userName).join('、');
+
+        const myResponse = currentUser
+            ? (responses.find(r => r.userEmail === currentUser.email)?.response || null)
+            : null;
+
+        const card = document.createElement('div');
+        card.className = 'date-card';
+
+        const disabledAttr = currentUser ? '' : 'disabled';
+
+        card.innerHTML = `
+            <div class="date-card-header">
+                <span class="date-card-title">${formatDateLabel(dateStr)}</span>
+                <div class="response-badges">
+                    <span class="rbadge rbadge-yes">✔ ${yesCount}</span>
+                    <span class="rbadge rbadge-maybe">? ${maybeCount}</span>
+                    <span class="rbadge rbadge-no">✖ ${noCount}</span>
+                </div>
+            </div>
+            <div class="attendees-list">${attendees ? '會去：' + attendees : '暫無人回覆會去'}</div>
+            <div class="vote-buttons">
+                <button class="vote-btn vote-btn-yes ${myResponse === 'yes' ? 'selected' : ''}" ${disabledAttr} onclick="castVote('${dateStr}', 'yes')">會去</button>
+                <button class="vote-btn vote-btn-maybe ${myResponse === 'maybe' ? 'selected' : ''}" ${disabledAttr} onclick="castVote('${dateStr}', 'maybe')">可能去</button>
+                <button class="vote-btn vote-btn-no ${myResponse === 'no' ? 'selected' : ''}" ${disabledAttr} onclick="castVote('${dateStr}', 'no')">不去</button>
+            </div>
+            ${!currentUser ? '<p class="login-hint">請登入後才能投票</p>' : ''}
+        `;
+        container.appendChild(card);
+    });
+}
+
+window.castVote = async (dateStr, response) => {
+    if (!currentUser) return;
+    const docId = `${dateStr}_${currentUser.email}`;
+    try {
+        await setDoc(doc(db, 'scheduleResponses', docId), {
+            date: dateStr,
+            userEmail: currentUser.email,
+            userName: currentUserName || currentUser.email,
+            response,
+            updatedAt: serverTimestamp()
+        });
+        // 更新本地快照再重繪
+        const idx = allResponses.findIndex(r => r.id === docId);
+        const entry = { id: docId, date: dateStr, userEmail: currentUser.email, userName: currentUserName || currentUser.email, response };
+        if (idx >= 0) allResponses[idx] = entry;
+        else allResponses.push(entry);
+        renderSchedule();
+    } catch (err) {
+        alert('投票失敗，請稍後再試');
+        console.error(err);
+    }
 };
