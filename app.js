@@ -103,6 +103,7 @@ navBtns.forEach(btn => {
         if (targetSection === 'list') loadReceipts();
         if (targetSection === 'admin') loadMembers();
         if (targetSection === 'schedule') initSchedule();
+        if (targetSection === 'tickets') initTickets();
     });
 });
 
@@ -626,4 +627,125 @@ document.getElementById('event-form')?.addEventListener('submit', async (e) => {
         submitBtn.disabled = false;
     }
 });
+
+
+
+// ===== 6. Tickets =====
+
+let allTickets = [];
+let ticketFilter = 'all';
+let ticketsInitialized = false;
+
+function initTickets() {
+    if (ticketsInitialized) return;
+    ticketsInitialized = true;
+
+    onSnapshot(
+        query(collection(db, 'tickets'), orderBy('createdAt', 'desc')),
+        snap => {
+            allTickets = [];
+            snap.forEach(d => allTickets.push({ id: d.id, ...d.data() }));
+            renderTickets();
+        }
+    );
+
+    document.querySelectorAll('.tk-filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.tk-filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            ticketFilter = btn.getAttribute('data-filter');
+            renderTickets();
+        });
+    });
+}
+
+function renderTickets() {
+    const list = document.getElementById('tickets-list');
+    if (!list) return;
+
+    const filtered = ticketFilter === 'all'
+        ? allTickets
+        : allTickets.filter(t => t.status === ticketFilter);
+
+    if (filtered.length === 0) {
+        list.innerHTML = '<p style="color:#aaa;">目前沒有 Ticket</p>';
+        return;
+    }
+
+    const typeEmoji = { bug: '🐛', feature: '✨', improvement: '🔧' };
+    const priorityClass = { low: 'priority-low', medium: 'priority-medium', high: 'priority-high' };
+    const statusLabel = { open: 'Open', in_progress: 'In Progress', resolved: 'Resolved' };
+
+    list.innerHTML = filtered.map(t => {
+        const canChangeStatus = hasPermission('developer');
+        const canDelete = currentUser && (currentUser.email === t.createdBy || hasPermission('developer'));
+        const date = t.createdAt?.toDate().toLocaleDateString() || '';
+
+        const statusOptions = ['open', 'in_progress', 'resolved']
+            .filter(s => s !== t.status)
+            .map(s => `<button class="tk-status-btn" onclick="changeTicketStatus('${t.id}', '${s}')">${statusLabel[s]}</button>`)
+            .join('');
+
+        return `<div class="ticket-card ticket-status-${t.status}">
+            <div class="ticket-card-header">
+                <span class="ticket-type">${typeEmoji[t.type] || '📝'} ${t.title}</span>
+                <span class="ticket-badge ${priorityClass[t.priority]}">${t.priority}</span>
+            </div>
+            <p class="ticket-desc">${t.description}</p>
+            <div class="ticket-meta">
+                <span class="tk-status-badge tk-status-${t.status}">${statusLabel[t.status]}</span>
+                <span>by ${t.submittedBy}</span>
+                <span>${date}</span>
+            </div>
+            <div class="ticket-actions">
+                ${canChangeStatus ? statusOptions : ''}
+                ${canDelete ? `<button class="tk-delete-btn" onclick="deleteTicket('${t.id}')">刪除</button>` : ''}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+document.getElementById('ticket-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!currentUser) { showToast('請先登入', 'error'); return; }
+    const btn = document.getElementById('tk-submit');
+    btn.disabled = true;
+    try {
+        await addDoc(collection(db, 'tickets'), {
+            type: document.getElementById('tk-type').value,
+            title: document.getElementById('tk-title').value,
+            description: document.getElementById('tk-desc').value,
+            priority: document.getElementById('tk-priority').value,
+            status: 'open',
+            submittedBy: currentUserName || currentUser.email,
+            createdBy: currentUser.email,
+            createdAt: serverTimestamp()
+        });
+        showToast('Ticket 已提交！', 'success');
+        e.target.reset();
+    } catch (err) {
+        showToast('提交失敗', 'error');
+    } finally {
+        btn.disabled = false;
+    }
+});
+
+window.changeTicketStatus = async (id, newStatus) => {
+    try {
+        await updateDoc(doc(db, 'tickets', id), { status: newStatus });
+        showToast('狀態已更新', 'success');
+    } catch (err) {
+        showToast('更新失敗', 'error');
+    }
+};
+
+window.deleteTicket = async (id) => {
+    if (!confirm('確定刪除此 Ticket？')) return;
+    try {
+        await deleteDoc(doc(db, 'tickets', id));
+        showToast('已刪除', 'info');
+    } catch (err) {
+        showToast('刪除失敗', 'error');
+    }
+};
 

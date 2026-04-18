@@ -26,6 +26,7 @@
                 <button class="nav-btn" data-section="floorplan">平面圖</button>
                 <button class="nav-btn" data-section="schedule">Schedule</button>
                 <button class="nav-btn" data-section="admin">權限管理</button>
+                <button class="nav-btn" data-section="tickets">🚫 Tickets</button>
             </nav>
             <div id="auth-section">
                 <span id="user-email"></span>
@@ -104,15 +105,6 @@
                 </div>
             </div>
         </section>
-
-        <!-- 平面圖 -->
-        <section id="section-floorplan" class="page-section" style="display: none;">
-            <h2>工作室平面圖</h2>
-            <div class="floorplan-container">
-                <img id="floorplan-img" src="floorplan-placeholder.jpeg" alt="工作室平面圖" style="max-width: 100%;">
-                <p class="hint">如需更新平面圖，請聯繫管理員。</p>
-            </div>
-        </section>
         <!-- Schedule / 出席日曆 -->
         <section id="section-schedule" class="page-section" style="display: none;">
             <div class="schedule-header">
@@ -174,7 +166,14 @@
                 </div>
             </div>
         </section>
-
+        <!-- 平面圖 -->
+        <section id="section-floorplan" class="page-section" style="display: none;">
+            <h2>工作室平面圖</h2>
+            <div class="floorplan-container">
+                <img id="floorplan-img" src="floorplan-placeholder.jpeg" alt="工作室平面圖" style="max-width: 100%;">
+                <p class="hint">如需更新平面圖，請聯繫管理員。</p>
+            </div>
+        </section>
         <!-- Admin Panel (管理員專區) -->
         <section id="section-admin" class="page-section" style="display: none;">
             <h2>成員權限管理</h2>
@@ -248,6 +247,62 @@
                         </div>
                     </form>
                 </div>
+            </div>
+        </section>
+
+        <!-- Tickets -->
+        <section id="section-tickets" class="page-section" style="display: none;">
+            <div class="tickets-layout">
+
+                <!-- 左側：提交表單 -->
+                <div class="ticket-form-panel">
+                    <h3>提交新 Ticket</h3>
+                    <form id="ticket-form">
+                        <div class="form-group">
+                            <label>類型</label>
+                            <select id="tk-type">
+                                <option value="bug">🐛 Bug 回報</option>
+                                <option value="feature">✨ 功能建議</option>
+                                <option value="improvement">🔧 改善建議</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>標題</label>
+                            <input type="text" id="tk-title" required placeholder="簡短說明問題">
+                        </div>
+                        <div class="form-group">
+                            <label>詳細說明</label>
+                            <textarea id="tk-desc" rows="4" required placeholder="請描述問題 / 建議的內容、它發生的地方、及您希望如何處理..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>優先級</label>
+                            <select id="tk-priority">
+                                <option value="low">Low</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="high">High</option>
+                            </select>
+                        </div>
+                        <button type="submit" id="tk-submit" class="primary-btn" style="width:100%;">提交 Ticket</button>
+                    </form>
+                    <div id="tk-login-hint" style="display:none; color:#999; margin-top:10px;">🔒 請登入後才能提交</div>
+                </div>
+
+                <!-- 右側：清單 -->
+                <div class="ticket-list-panel">
+                    <div class="ticket-list-header">
+                        <h3>Ticket 清單</h3>
+                        <div class="ticket-filters">
+                            <button class="tk-filter-btn active" data-filter="all">全部</button>
+                            <button class="tk-filter-btn" data-filter="open">Open</button>
+                            <button class="tk-filter-btn" data-filter="in_progress">In Progress</button>
+                            <button class="tk-filter-btn" data-filter="resolved">Resolved</button>
+                        </div>
+                    </div>
+                    <div id="tickets-list">
+                        <p style="color:#aaa;">載入中...</p>
+                    </div>
+                </div>
+
             </div>
         </section>    </main>
 
