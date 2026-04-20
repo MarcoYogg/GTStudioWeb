@@ -13,6 +13,7 @@ import {
     setDoc,
     doc, 
     query, 
+    where,
     orderBy, 
     serverTimestamp,
     onSnapshot,
@@ -234,6 +235,9 @@ onAuthStateChanged(auth, async (user) => {
         loginBtn.style.display = 'none';
         logoutBtn.style.display = 'inline-block';
         loginWelcome.style.display = 'block';
+
+        // 確保登入後計算一次報表
+        calculateMonthlyReport();
     } else {
         currentUserRole = "guest";
         currentPermissions = globalPermissionsMap["guest"];
@@ -322,18 +326,17 @@ if (reportMonthSelect) {
     reportMonthSelect.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 }
 
-document.getElementById('generate-report-btn')?.addEventListener('click', async () => {
-    const selectedMonth = reportMonthSelect.value; // YYYY-MM
-    const utilities = Number(document.getElementById('report-utilities').value) || 0;
+async function calculateMonthlyReport() {
+    const selectedMonth = reportMonthSelect?.value; // YYYY-MM
+    const utilitiesInput = document.getElementById('report-utilities');
+    const utilities = Number(utilitiesInput?.value) || 0;
     const rent = 10000;
     
-    if (!selectedMonth) {
-        showToast("請選擇月份", "error");
-        return;
-    }
+    if (!selectedMonth) return;
 
     try {
         const resultsDiv = document.getElementById('report-results');
+        if (!resultsDiv) return;
         resultsDiv.style.display = 'block';
         
         // 抓取所有收據，過濾出 approved 且月份相符的
@@ -359,14 +362,16 @@ document.getElementById('generate-report-btn')?.addEventListener('click', async 
         document.getElementById('res-total-approved').textContent = `$${totalApproved.toLocaleString()}`;
         document.getElementById('res-total-fixed').textContent = `$${totalFixed.toLocaleString()}`;
         document.getElementById('res-total-sum').textContent = `$${totalSum.toLocaleString()}`;
-        document.getElementById('res-per-person').textContent = `$${Math.round(perPerson).toLocaleString()}`;
+        document.getElementById('res-per-person').textContent = `$${perPerson.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-        showToast(`${selectedMonth} 報表計算完成`, "success");
     } catch (err) {
         console.error(err);
-        showToast("產生報表失敗", "error");
     }
-});
+}
+
+// 監聽輸入變化，即時計算
+reportMonthSelect?.addEventListener('change', calculateMonthlyReport);
+document.getElementById('report-utilities')?.addEventListener('input', calculateMonthlyReport);
 
 uploadForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
