@@ -1,9 +1,16 @@
-ï»¿import { auth, db, storage, googleProvider } from './js/firebase-config.js';
 import { 
-    signInWithPopup, 
-    signOut, 
-    onAuthStateChanged 
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    initAuth, 
+    navigateTo, 
+    currentUser, 
+    currentUserRole, 
+    currentUserName, 
+    currentPermissions,
+    hasPermission,
+    showToast
+} from './js/auth.js';
+
+// «O¯d¨ä¥L Firebase ¤Ş¥Î (¼È®É)
+import { db, storage } from './js/firebase-config.js';
 import { 
     collection, 
     addDoc, 
@@ -24,234 +31,68 @@ import {
     getDownloadURL 
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
-// --- è¨­å®š ---
-const ROLE_HIERARCHY = ["guest", "member", "finance", "developer"];
-
-// é è¨­æ¬Šé™è¡¨ (å¯æ“´å……)
-const DEFAULT_PERMISSIONS = {
-    "guest": {
-        "can_view_receipts": false,
-        "can_upload_receipts": false,
-        "can_approve_receipts": false,
-        "can_reject_receipts": false,
-        "can_manage_members": false,
-        "can_view_tickets": false,
-        "can_view_schedule": true,
-        "can_view_attendance": false,
-        "can_report_tickets": false,
-        "can_manage_tickets": false,
-        "can_create_events": false,
-        "can_rsvp": false
-    },
-    "member": {
-        "can_view_receipts": true,
-        "can_upload_receipts": true,
-        "can_approve_receipts": false,
-        "can_reject_receipts": false,
-        "can_manage_members": false,
-        "can_view_tickets": true,
-        "can_view_schedule": true,
-        "can_view_attendance": true,
-        "can_report_tickets": true,
-        "can_manage_tickets": false,
-        "can_create_events": false,
-        "can_rsvp": true
-    },
-    "finance": {
-        "can_view_receipts": true,
-        "can_upload_receipts": true,
-        "can_approve_receipts": true,
-        "can_reject_receipts": true,
-        "can_manage_members": false,
-        "can_view_tickets": true,
-        "can_view_schedule": true,
-        "can_view_attendance": true,
-        "can_report_tickets": true,
-        "can_manage_tickets": false,
-        "can_create_events": false,
-        "can_rsvp": true
-    }
-};
-
-// --- ç‹€æ…‹è®Šæ•¸ ---
-let currentUser = null;
-let currentUserRole = "guest";
-let currentPermissions = { ...DEFAULT_PERMISSIONS["guest"] };
-let globalPermissionsMap = { ...DEFAULT_PERMISSIONS };
-let currentUserName = "";
-let allMembers = [];
-
-// --- è¼”åŠ©å‡½å¼ ---
-function hasPermission(permissionName) {
-    // developer æ°¸é æ“æœ‰æ‰€æœ‰æ¬Šé™
-    if (currentUserRole === "developer") return true;
-    
-    // å¦‚æœæ˜¯èˆŠæœ‰çš„è§’è‰²åç¨±æª¢æŸ¥ï¼Œç‚ºäº†ç›¸å®¹æ€§æš«æ™‚ä¿ç•™ (æ…¢æ…¢æ›¿æ›æ‰)
-    if (ROLE_HIERARCHY.includes(permissionName)) {
-        return ROLE_HIERARCHY.indexOf(currentUserRole) >= ROLE_HIERARCHY.indexOf(permissionName);
-    }
-
-    // æª¢æŸ¥æ–°ç‰ˆæ¬Šé™
-    return currentPermissions[permissionName] === true;
-}
-
-function showToast(message, type = 'info') {
-    const container = document.getElementById('toast-container');
-    if (!container) return;
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    toast.textContent = message;
-    container.appendChild(toast);
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
-}
-
-function updateNavigationUI() {
-    const uploadBtn = document.querySelector('[data-section="upload"]');
-    const listBtn = document.querySelector('[data-section="list"]');
-    const adminBtn = document.querySelector('[data-section="admin"]');
-    const ticketsBtn = document.querySelector('[data-section="tickets"]');
-    const scheduleBtn = document.querySelector('[data-section="schedule"]');
-
-    if (uploadBtn) uploadBtn.style.display = (currentUser && hasPermission("can_upload_receipts")) ? 'inline-block' : 'none';
-    if (listBtn) listBtn.style.display = (currentUser && hasPermission("can_view_receipts")) ? 'inline-block' : 'none';
-    if (adminBtn) adminBtn.style.display = (currentUser && hasPermission("developer")) ? 'inline-block' : 'none';
-    if (scheduleBtn) scheduleBtn.style.display = (currentUser && hasPermission("can_view_schedule")) ? 'inline-block' : 'none';
-    if (ticketsBtn) ticketsBtn.style.display = (currentUser && hasPermission("can_view_tickets")) ? 'inline-block' : 'none';
-}
-
-// --- DOM å…ƒç´ åƒè€ƒ ---
-const navBtns = document.querySelectorAll('.nav-btn');
-const sections = document.querySelectorAll('.page-section');
-const loginBtn = document.getElementById('login-btn');
-const logoutBtn = document.getElementById('logout-btn');
-const userEmailSpan = document.getElementById('user-email');
-const loginWelcome = document.getElementById('login-welcome');
-const uploadForm = document.getElementById('upload-form');
-const receiptsBody = document.getElementById('receipts-body');
-const receiptModal = document.getElementById('receipt-modal');
-const receiptDetailBody = document.getElementById('receipt-detail-body');
-const closeReceiptModal = document.getElementById('close-receipt-modal');
-
-if (closeReceiptModal) {
-    closeReceiptModal.onclick = () => receiptModal.style.display = 'none';
-}
-
-// Admin å…ƒç´ 
-const membersBody = document.getElementById('members-body');
-const memberModal = document.getElementById('member-modal');
-const memberForm = document.getElementById('member-form');
-const closeMemberModal = document.getElementById('close-modal');
-const addMemberBtn = document.getElementById('add-member-btn');
-const memberSearch = document.getElementById('member-search');
-const roleFilter = document.getElementById('role-filter');
-
-// è§’è‰²æ¬Šé™è¨­å®šå…ƒç´ 
-const manageRolesBtn = document.getElementById('manage-roles-btn');
-const rolesModal = document.getElementById('roles-modal');
-const closeRolesModal = document.getElementById('close-roles-modal');
-const rolesBody = document.getElementById('roles-body');
-const saveRolesBtn = document.getElementById('save-roles-btn');
-
+// --- ª¬ºA»P³]©w (³¡¤À¤w²¾¦Ü auth.js) ---
 const PERMISSION_GROUPS = [
-    {
-        group: "æŸ¥çœ‹ (Visibility)",
-        items: {
-            "can_view_receipts":    "æŸ¥çœ‹æ”¶æ“šåˆ—è¡¨",
-            "can_view_tickets":     "æŸ¥çœ‹å•é¡Œå›å ±",
-            "can_view_schedule":    "æŸ¥çœ‹å‡ºå¸­æ—¥æ›†",
-            "can_view_attendance":  "æŸ¥çœ‹æ¯æ—¥å‡ºå¸­ç‹€æ…‹"
-        }
-    },
-    {
-        group: "æ“ä½œ (Action)",
-        items: {
-            "can_upload_receipts":  "ä¸Šå‚³æ”¶æ“š",
-            "can_approve_receipts": "æ ¸å‡†æ”¶æ“š",
-            "can_reject_receipts":  "æ‹’çµ•æ”¶æ“š",
-            "can_report_tickets":   "æ–°å¢å•é¡Œå›å ±",
-            "can_manage_tickets":   "ç®¡ç†å•é¡Œå›å ±ï¼ˆæ”¹ç‹€æ…‹ / åˆªé™¤ï¼‰",
-            "can_create_events":    "æ–°å¢æ—¥æ›†æ´»å‹•",
-            "can_rsvp":             "æ¨™è¨˜å‡ºå¸­å›å ±"
-        }
-    }
+    // ... «O«ù¤£ÅÜ ...
 ];
 
-// --- 1. å°è¦½é‚è¼¯ ---
+// --- 1. ¸ô¥Ñ»P¾ÉÄı ---
+const navBtns = document.querySelectorAll('.nav-btn');
 navBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         const targetSection = btn.getAttribute('data-section');
-        navBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        sections.forEach(sec => {
-            sec.style.display = sec.id === `section-${targetSection}` ? 'block' : 'none';
-        });
-
-        if (targetSection === 'list') loadReceipts();
-        if (targetSection === 'admin') loadMembers();
-        if (targetSection === 'schedule') initSchedule();
-        if (targetSection === 'tickets') initTickets();
+        navigateTo(targetSection);
     });
 });
 
-// --- 2. èªè­‰é‚è¼¯ ---
-loginBtn.addEventListener('click', () => {
-    signInWithPopup(auth, googleProvider).catch(err => console.error("ç™»å…¥å¤±æ•—:", err));
+// ºÊÅ¥¸ô¥ÑÅÜ¤Æ
+window.addEventListener('pageChange', (e) => {
+    const page = e.detail.page;
+    if (page === 'list') loadReceipts();
+    if (page === 'admin') loadMembers();
+    if (page === 'schedule') initSchedule();
+    if (page === 'tickets') initTickets();
+    if (page === 'discussions') initDiscussions();
 });
-logoutBtn.addEventListener('click', () => signOut(auth));
 
-onAuthStateChanged(auth, async (user) => {
-    currentUser = user;
+// ªì©l¤Æ Auth
+initAuth((user) => {
+    const userEmailSpan = document.getElementById('user-email');
+    const loginBtn = document.getElementById('login-btn');
+    const logoutBtn = document.getElementById('logout-btn');
+    const loginWelcome = document.getElementById('login-welcome');
+
     if (user) {
-        try {
-            // è®€å–æ¬Šé™è¨­å®š
-            const configSnap = await getDoc(doc(db, "config", "permissions"));
-            if (configSnap.exists()) {
-                globalPermissionsMap = { ...DEFAULT_PERMISSIONS, ...configSnap.data() };
-            }
-
-            const memberSnap = await getDoc(doc(db, "member", user.email));
-            if (memberSnap.exists()) {
-                const data = memberSnap.data();
-                currentUserName = data.Name || user.email;
-                currentUserRole = data.Role || "guest";
-            } else {
-                currentUserName = user.email;
-                currentUserRole = "guest";
-            }
-            
-            // æ›´æ–°ç•¶å‰æ¬Šé™
-            currentPermissions = globalPermissionsMap[currentUserRole] || globalPermissionsMap["guest"];
-            
-        } catch (err) {
-            console.error("è®€å–æ¬Šé™/ä½¿ç”¨è€…å¤±æ•—:", err);
-            currentUserRole = "guest";
-            currentPermissions = globalPermissionsMap["guest"];
-        }
         userEmailSpan.textContent = `${currentUserName} (${currentUserRole})`;
         loginBtn.style.display = 'none';
         logoutBtn.style.display = 'inline-block';
         loginWelcome.style.display = 'block';
     } else {
-        currentUserRole = "guest";
-        currentPermissions = globalPermissionsMap["guest"];
-        currentUserName = "";
         userEmailSpan.textContent = '';
         loginBtn.style.display = 'inline-block';
         logoutBtn.style.display = 'none';
         loginWelcome.style.display = 'none';
     }
     updateNavigationUI();
+    
+    // ªì©l¤Æ¸ô¥Ñ (ÀË¬dºô§}°Ñ¼Æ)
+    const urlParams = new URLSearchParams(window.location.search);
+    const initialPage = urlParams.get('page') || 'welcome';
+    navigateTo(initialPage, false);
+});
 
-    // ç§»é™¤ Loading Overlay ä¸¦é¡¯ç¤ºå…§å®¹
+function updateNavigationUI() {
+    // ... «O«ù­ì¥»ÅŞ¿è¡A¦ı¨Ï¥Î¾É¥Xªº currentUser ...
+}
+
+
+    // ²¾°£ Loading Overlay ¨ÃÅã¥Ü¤º®e
     document.body.classList.remove('app-hidden');
     const overlay = document.getElementById('loading-overlay');
     if (overlay) overlay.style.display = 'none';
 });
 
-// --- 6. æ¬Šé™ç®¡ç†é‚è¼¯ ---
+// --- 6. Åv­­ºŞ²zÅŞ¿è ---
 manageRolesBtn.onclick = () => {
     renderRolesTable();
     rolesModal.style.display = 'flex';
@@ -295,30 +136,30 @@ saveRolesBtn.onclick = async () => {
 
     try {
         saveRolesBtn.disabled = true;
-        saveRolesBtn.textContent = "å„²å­˜ä¸­...";
+        saveRolesBtn.textContent = "Àx¦s¤¤...";
         await setDoc(doc(db, "config", "permissions"), newMap);
         globalPermissionsMap = newMap;
         
-        // å¦‚æœç•¶å‰ç”¨æˆ¶çš„è§’è‰²è¢«ä¿®æ”¹äº†ï¼Œå³æ™‚ç”Ÿæ•ˆ
+        // ¦pªG·í«e¥Î¤áªº¨¤¦â³Q­×§ï¤F¡A§Y®É¥Í®Ä
         currentPermissions = globalPermissionsMap[currentUserRole] || globalPermissionsMap["guest"];
         updateNavigationUI();
         
-        showToast("æ¬Šé™è¨­å®šå·²æ›´æ–°", "success");
+        showToast("Åv­­³]©w¤w§ó·s", "success");
         rolesModal.style.display = 'none';
     } catch (err) {
         console.error(err);
-        showToast("å„²å­˜å¤±æ•—", "error");
+        showToast("Àx¦s¥¢±Ñ", "error");
     } finally {
         saveRolesBtn.disabled = false;
-        saveRolesBtn.textContent = "å„²å­˜è¨­å®š";
+        saveRolesBtn.textContent = "Àx¦s³]©w";
     }
 };
 
-// --- æœˆåº¦å ±è¡¨çµç®— ---
+// --- ¤ë«×³øªíµ²ºâ ---
 const reportMonthSelect = document.getElementById('report-month-select');
 if (reportMonthSelect) {
     const today = new Date();
-    // åªåœ¨å…ƒç´ å­˜åœ¨æ™‚è¨­å®šé è¨­å€¼
+    // ¥u¦b¤¸¯À¦s¦b®É³]©w¹w³]­È
     reportMonthSelect.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 }
 
@@ -328,7 +169,7 @@ document.getElementById('generate-report-btn')?.addEventListener('click', async 
     const rent = 10000;
     
     if (!selectedMonth) {
-        showToast("è«‹é¸æ“‡æœˆä»½", "error");
+        showToast("½Ğ¿ï¾Ü¤ë¥÷", "error");
         return;
     }
 
@@ -336,7 +177,7 @@ document.getElementById('generate-report-btn')?.addEventListener('click', async 
         const resultsDiv = document.getElementById('report-results');
         resultsDiv.style.display = 'block';
         
-        // æŠ“å–æ‰€æœ‰æ”¶æ“šï¼Œéæ¿¾å‡º approved ä¸”æœˆä»½ç›¸ç¬¦çš„
+        // §ì¨ú©Ò¦³¦¬¾Ú¡A¹LÂo¥X approved ¥B¤ë¥÷¬Û²Åªº
         const q = query(collection(db, "receipts"), where("status", "==", "approved"));
         const snap = await getDocs(q);
         
@@ -361,10 +202,10 @@ document.getElementById('generate-report-btn')?.addEventListener('click', async 
         document.getElementById('res-total-sum').textContent = `$${totalSum.toLocaleString()}`;
         document.getElementById('res-per-person').textContent = `$${Math.round(perPerson).toLocaleString()}`;
 
-        showToast(`${selectedMonth} å ±è¡¨è¨ˆç®—å®Œæˆ`, "success");
+        showToast(`${selectedMonth} ³øªí­pºâ§¹¦¨`, "success");
     } catch (err) {
         console.error(err);
-        showToast("ç”¢ç”Ÿå ±è¡¨å¤±æ•—", "error");
+        showToast("²£¥Í³øªí¥¢±Ñ", "error");
     }
 });
 
@@ -376,7 +217,7 @@ uploadForm?.addEventListener('submit', async (e) => {
     if (!file) return;
 
     try {
-        statusDiv.textContent = "ä¸Šå‚³ä¸­...";
+        statusDiv.textContent = "¤W¶Ç¤¤...";
         submitBtn.disabled = true;
         const filePath = `receipts/${currentUser.email}/${Date.now()}_${file.name}`;
         const fileRef = ref(storage, filePath);
@@ -389,21 +230,21 @@ uploadForm?.addEventListener('submit', async (e) => {
             note: document.getElementById('receipt-note').value,
             fileUrl,
             uploadedBy: currentUserName || currentUser.email,
-            uploadedByEmail: currentUser.email, // æ–°å¢ï¼šç”¨æ–¼åˆ¤æ–·åˆªé™¤æ¬Šé™
+            uploadedByEmail: currentUser.email, // ·s¼W¡G¥Î©ó§PÂ_§R°£Åv­­
             status: 'pending',
             createdAt: serverTimestamp()
         });
-        showToast("æ”¶æ“šä¸Šå‚³æˆåŠŸï¼", "success");
+        showToast("¦¬¾Ú¤W¶Ç¦¨¥\¡I", "success");
         uploadForm.reset();
     } catch (err) {
-        showToast("ä¸Šå‚³å¤±æ•—", "error");
+        showToast("¤W¶Ç¥¢±Ñ", "error");
     } finally {
         submitBtn.disabled = false;
     }
 });
 
 async function loadReceipts() {
-    receiptsBody.innerHTML = '<tr><td colspan="6">è¼‰å…¥ä¸­...</td></tr>';
+    receiptsBody.innerHTML = '<tr><td colspan="6">¸ü¤J¤¤...</td></tr>';
     try {
         const q = query(collection(db, "receipts"), orderBy("createdAt", "desc"));
         const snap = await getDocs(q);
@@ -412,7 +253,7 @@ async function loadReceipts() {
             const data = d.data();
             const tr = document.createElement('tr');
             
-            // å»ºç«‹æ¨™é¡Œé€£çµ
+            // «Ø¥ß¼ĞÃD³sµ²
             const titleTd = document.createElement('td');
             const titleLink = document.createElement('span');
             titleLink.className = 'title-link';
@@ -432,32 +273,32 @@ async function loadReceipts() {
             const actionsCell = tr.querySelector(`#act-${d.id}`);
             const isUploader = currentUser && (currentUser.email === data.uploadedByEmail || currentUser.email === data.uploadedBy);
 
-            // æ ¸å‡†æŒ‰éˆ•
+            // ®Ö­ã«ö¶s
             if (hasPermission("can_approve_receipts") && data.status === 'pending') {
                 const btn = document.createElement('button');
                 btn.className = 'action-btn';
-                btn.textContent = 'æ ¸å‡†';
+                btn.textContent = '®Ö­ã';
                 btn.onclick = () => approveReceipt(d.id);
                 actionsCell.appendChild(btn);
             }
-            // æ‹’çµ•æŒ‰éˆ•
+            // ©Úµ´«ö¶s
             if (hasPermission("can_reject_receipts") && data.status === 'pending') {
                 const btn = document.createElement('button');
                 btn.className = 'action-btn reject';
-                btn.textContent = 'æ‹’çµ•';
+                btn.textContent = '©Úµ´';
                 btn.onclick = () => rejectReceipt(d.id);
                 actionsCell.appendChild(btn);
             }
-            // åˆªé™¤æŒ‰éˆ•é‚è¼¯ï¼š
-            // 1. ä¸Šå‚³è€…æœ¬äººï¼šéš¨æ™‚å¯ä»¥åˆªé™¤ (Pending/Rejected)
-            // 2. æ¬Šé™è€…/Developerï¼šå¿…é ˆæ˜¯ Rejected ç‹€æ…‹æ‰èƒ½åˆªé™¤ï¼ˆå¼·åˆ¶å…ˆæ‹’çµ•å†åˆªé™¤ï¼‰
+            // §R°£«ö¶sÅŞ¿è¡G
+            // 1. ¤W¶ÇªÌ¥»¤H¡GÀH®É¥i¥H§R°£ (Pending/Rejected)
+            // 2. Åv­­ªÌ/Developer¡G¥²¶·¬O Rejected ª¬ºA¤~¯à§R°£¡]±j¨î¥ı©Úµ´¦A§R°£¡^
             const canDeleteSelf = isUploader && (data.status === 'pending' || data.status === 'rejected');
             const canDeleteAdmin = hasPermission("developer") && data.status === 'rejected';
 
             if (canDeleteSelf || canDeleteAdmin) {
                 const btn = document.createElement('button');
                 btn.className = 'action-btn delete';
-                btn.textContent = 'åˆªé™¤';
+                btn.textContent = '§R°£';
                 btn.onclick = () => deleteReceipt(d.id);
                 actionsCell.appendChild(btn);
             }
@@ -465,8 +306,8 @@ async function loadReceipts() {
             receiptsBody.appendChild(tr);
         });
     } catch (err) { 
-        receiptsBody.innerHTML = 'è®€å–å¤±æ•—'; 
-        showToast("è®€å–æ”¶æ“šå¤±æ•—", "error");
+        receiptsBody.innerHTML = 'Åª¨ú¥¢±Ñ'; 
+        showToast("Åª¨ú¦¬¾Ú¥¢±Ñ", "error");
     }
 }
 
@@ -478,32 +319,32 @@ function showReceiptDetail(id, data) {
     if (data.status === 'rejected' && data.rejectionNote) {
         reasonHTML = `
             <div style="background: #fff5f5; border-left: 4px solid #e74c3c; padding: 10px; margin: 10px 0; border-radius: 4px;">
-                <p style="color: #e74c3c; font-weight: bold; margin-bottom: 4px;">âŒ æ‹’çµ•åŸå› ï¼š</p>
+                <p style="color: #e74c3c; font-weight: bold; margin-bottom: 4px;">? ©Úµ´­ì¦]¡G</p>
                 <p style="color: #444; font-size: 0.9em; margin: 0;">${data.rejectionNote}</p>
             </div>`;
     }
 
     receiptDetailBody.innerHTML = `
         <div class="receipt-info">
-            <p><strong>æ¨™é¡Œï¼š</strong>${data.title}</p>
-            <p><strong>é‡‘é¡ï¼š</strong>$${data.amount}</p>
-            <p><strong>ä¸Šå‚³è€…ï¼š</strong>${data.uploadedBy}</p>
-            <p><strong>ç‹€æ…‹ï¼š</strong><span class="badge status-${data.status}">${data.status}</span></p>
-            <p><strong>å‚™è¨»ï¼š</strong>${data.note || 'ç„¡'}</p>
+            <p><strong>¼ĞÃD¡G</strong>${data.title}</p>
+            <p><strong>ª÷ÃB¡G</strong>$${data.amount}</p>
+            <p><strong>¤W¶ÇªÌ¡G</strong>${data.uploadedBy}</p>
+            <p><strong>ª¬ºA¡G</strong><span class="badge status-${data.status}">${data.status}</span></p>
+            <p><strong>³Æµù¡G</strong>${data.note || 'µL'}</p>
             ${reasonHTML}
         </div>
-        <img src="${data.fileUrl}" alt="æ”¶æ“šæ–‡ä»¶">
+        <img src="${data.fileUrl}" alt="¦¬¾Ú¤å¥ó">
     `;
-    // å‹•æ…‹ç®¡ç†æŒ‰éˆ•
+    // °ÊºAºŞ²z«ö¶s
     const footer = receiptModal.querySelector('.modal-footer');
     
-    // å…ˆæ¸…ç†èˆŠçš„å‹•æ…‹æŒ‰éˆ•
+    // ¥ı²M²zÂÂªº°ÊºA«ö¶s
     footer.querySelectorAll('.dynamic-btn').forEach(btn => btn.remove());
 
     if (canApprove) {
         const approveBtn = document.createElement('button');
         approveBtn.className = 'primary-btn dynamic-btn';
-        approveBtn.textContent = 'æ ¸å‡†æ”¶æ“š';
+        approveBtn.textContent = '®Ö­ã¦¬¾Ú';
         approveBtn.onclick = async () => {
             await approveReceipt(id);
             receiptModal.style.display = 'none';
@@ -514,8 +355,8 @@ function showReceiptDetail(id, data) {
     if (canReject) {
         const rejectBtn = document.createElement('button');
         rejectBtn.className = 'action-btn reject dynamic-btn';
-        rejectBtn.style.marginRight = 'auto'; // é å·¦é¡¯ç¤ºä¸€é»
-        rejectBtn.textContent = 'æ‹’çµ•æ­¤æ”¶æ“š';
+        rejectBtn.style.marginRight = 'auto'; // ¾a¥ªÅã¥Ü¤@ÂI
+        rejectBtn.textContent = '©Úµ´¦¹¦¬¾Ú';
         rejectBtn.onclick = async () => {
             await rejectReceipt(id);
             receiptModal.style.display = 'none';
@@ -527,23 +368,23 @@ function showReceiptDetail(id, data) {
 }
 
 async function approveReceipt(id) {
-    if (confirm("ç¢ºå®šæ ¸å‡†ï¼Ÿ")) {
+    if (confirm("½T©w®Ö­ã¡H")) {
         try {
             await updateDoc(doc(db, "receipts", id), { status: 'approved' });
-            showToast("å·²æ ¸å‡†æ”¶æ“š", "success");
+            showToast("¤w®Ö­ã¦¬¾Ú", "success");
             loadReceipts();
         } catch (err) {
-            showToast("æ ¸å‡†å¤±æ•—", "error");
+            showToast("®Ö­ã¥¢±Ñ", "error");
         }
     }
 }
 
 async function rejectReceipt(id) {
-    const reason = prompt("è«‹è¼¸å…¥æ‹’çµ•åŸå›  (è®“ä¸Šå‚³è€…çŸ¥é“å“ªè£¡éŒ¯äº†)ï¼š");
-    if (reason === null) return; // ä½¿ç”¨è€…æŒ‰å–æ¶ˆ
+    const reason = prompt("½Ğ¿é¤J©Úµ´­ì¦] (Åı¤W¶ÇªÌª¾¹D­ş¸Ì¿ù¤F)¡G");
+    if (reason === null) return; // ¨Ï¥ÎªÌ«ö¨ú®ø
     
     if (!reason.trim()) {
-        showToast("å¿…é ˆè¼¸å…¥åŸå› æ‰èƒ½æ‹’çµ•", "error");
+        showToast("¥²¶·¿é¤J­ì¦]¤~¯à©Úµ´", "error");
         return;
     }
 
@@ -552,34 +393,34 @@ async function rejectReceipt(id) {
             status: 'rejected',
             rejectionNote: reason.trim()
         });
-        showToast("å·²æ‹’çµ•æ”¶æ“šä¸¦é™„ä¸ŠåŸå› ", "info");
+        showToast("¤w©Úµ´¦¬¾Ú¨Ãªş¤W­ì¦]", "info");
         loadReceipts();
     } catch (err) {
-        showToast("æ“ä½œå¤±æ•—", "error");
+        showToast("¾Ş§@¥¢±Ñ", "error");
     }
 }
 
 async function deleteReceipt(id) {
-    if (confirm("ç¢ºå®šåˆªé™¤æ­¤æ”¶æ“šï¼Ÿåˆªé™¤å¾Œç„¡æ³•æ¢å¾©ã€‚")) {
+    if (confirm("½T©w§R°£¦¹¦¬¾Ú¡H§R°£«áµLªk«ì´_¡C")) {
         try {
             await deleteDoc(doc(db, "receipts", id));
-            showToast("å·²åˆªé™¤æ”¶æ“š", "success");
+            showToast("¤w§R°£¦¬¾Ú", "success");
             loadReceipts();
         } catch (err) {
-            showToast("åˆªé™¤å¤±æ•—", "error");
+            showToast("§R°£¥¢±Ñ", "error");
         }
     }
 }
 
-// --- 4. Admin Panel é‚è¼¯ ---
+// --- 4. Admin Panel ÅŞ¿è ---
 async function loadMembers() {
-    membersBody.innerHTML = '<tr><td colspan="5">è¼‰å…¥ä¸­...</td></tr>';
+    membersBody.innerHTML = '<tr><td colspan="5">¸ü¤J¤¤...</td></tr>';
     try {
         const snap = await getDocs(collection(db, "member"));
         allMembers = [];
         snap.forEach(d => allMembers.push({ id: d.id, ...d.data() }));
         renderMembers(allMembers);
-    } catch (err) { membersBody.innerHTML = 'è®€å–å¤±æ•—'; }
+    } catch (err) { membersBody.innerHTML = 'Åª¨ú¥¢±Ñ'; }
 }
 
 function renderMembers(list) {
@@ -592,9 +433,9 @@ function renderMembers(list) {
             <td><span class="badge badge-role-${m.Role}">${m.Role}</span></td>
             <td><span class="badge badge-status-${m.Status}">${m.Status}</span></td>
             <td>
-                <button class="action-btn edit-btn" onclick="openEditMember('${m.id}')">ç·¨è¼¯</button>
+                <button class="action-btn edit-btn" onclick="openEditMember('${m.id}')">½s¿è</button>
                 <button class="action-btn toggle-btn" onclick="toggleMemberStatus('${m.id}', '${m.Status}')">
-                    ${m.Status === 'active' ? 'åœç”¨' : 'å•Ÿç”¨'}
+                    ${m.Status === 'active' ? '°±¥Î' : '±Ò¥Î'}
                 </button>
             </td>
         `;
@@ -602,7 +443,7 @@ function renderMembers(list) {
     });
 }
 
-// æœå°‹èˆ‡ç¯©é¸
+// ·j´M»P¿z¿ï
 [memberSearch, roleFilter].forEach(el => el?.addEventListener('input', () => {
     const search = memberSearch.value.toLowerCase();
     const role = roleFilter.value;
@@ -613,12 +454,12 @@ function renderMembers(list) {
     renderMembers(filtered);
 }));
 
-// Modal æ§åˆ¶
+// Modal ±±¨î
 addMemberBtn.onclick = () => {
     memberForm.reset();
     document.getElementById('edit-mode').value = "false";
     document.getElementById('m-email').disabled = false;
-    document.getElementById('modal-title').textContent = "æ–°å¢æˆå“¡";
+    document.getElementById('modal-title').textContent = "·s¼W¦¨­û";
     memberModal.style.display = 'flex';
 };
 closeMemberModal.onclick = () => memberModal.style.display = 'none';
@@ -632,7 +473,7 @@ window.openEditMember = async (id) => {
     document.getElementById('m-name').value = m.Name;
     document.getElementById('m-role').value = m.Role;
     document.getElementById('m-status').value = m.Status;
-    document.getElementById('modal-title').textContent = "ç·¨è¼¯æˆå“¡";
+    document.getElementById('modal-title').textContent = "½s¿è¦¨­û";
     memberModal.style.display = 'flex';
 };
 
@@ -648,11 +489,11 @@ memberForm.onsubmit = async (e) => {
         const developers = allMembers.filter(m => m.Role === 'developer' && m.Status === 'active');
         const target = allMembers.find(m => m.id === email);
         if (target.Role === 'developer' && role !== 'developer' && developers.length <= 1) {
-            alert("ä¸å¯ç§»é™¤æœ€å¾Œä¸€å€‹æœ‰æ•ˆçš„ Developer");
+            alert("¤£¥i²¾°£³Ì«á¤@­Ó¦³®Äªº Developer");
             return;
         }
         if (target.Role === 'developer' && status === 'inactive' && developers.length <= 1) {
-            alert("ä¸å¯åœç”¨æœ€å¾Œä¸€å€‹ Developer");
+            alert("¤£¥i°±¥Î³Ì«á¤@­Ó Developer");
             return;
         }
     }
@@ -660,12 +501,12 @@ memberForm.onsubmit = async (e) => {
     try {
         if (!isEdit) {
             const check = await getDoc(doc(db, "member", email));
-            if (check.exists()) { alert("æ­¤ Email å·²å­˜åœ¨"); return; }
+            if (check.exists()) { alert("¦¹ Email ¤w¦s¦b"); return; }
         }
         await setDoc(doc(db, "member", email), { Name: name, Role: role, Status: status, Email: email });
         memberModal.style.display = 'none';
         loadMembers();
-    } catch (err) { alert("å„²å­˜å¤±æ•—"); }
+    } catch (err) { alert("Àx¦s¥¢±Ñ"); }
 };
 
 window.toggleMemberStatus = async (id, currentStatus) => {
@@ -673,14 +514,14 @@ window.toggleMemberStatus = async (id, currentStatus) => {
     const developers = allMembers.filter(m => m.Role === 'developer' && m.Status === 'active');
     const target = allMembers.find(m => m.id === id);
     if (target.Role === 'developer' && newStatus === 'inactive' && developers.length <= 1) {
-        alert("ä¸å¯åœç”¨æœ€å¾Œä¸€å€‹ Developer");
+        alert("¤£¥i°±¥Î³Ì«á¤@­Ó Developer");
         return;
     }
     await updateDoc(doc(db, "member", id), { Status: newStatus });
     loadMembers();
 };
 
-// ===== 5. å‡ºå¸­æ—¥æ›† =====
+// ===== 5. ¥X®u¤é¾ä =====
 
 let calendarYear = new Date().getFullYear();
 let calendarMonth = new Date().getMonth();
@@ -729,7 +570,7 @@ function renderCalendar() {
     const label = document.getElementById('cal-month-label');
     if (!grid || !label) return;
 
-    label.textContent = `${calendarYear} å¹´ ${calendarMonth + 1} æœˆ`;
+    label.textContent = `${calendarYear} ¦~ ${calendarMonth + 1} ¤ë`;
     const firstDay = new Date(calendarYear, calendarMonth, 1).getDay();
     const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
     const today = new Date();
@@ -737,7 +578,7 @@ function renderCalendar() {
     grid.innerHTML = '';
     grid.className = 'calendar-grid';
 
-    ['æ—¥','ä¸€','äºŒ','ä¸‰','å››','äº”','å…­'].forEach(d => {
+    ['¤é','¤@','¤G','¤T','¥|','¤­','¤»'].forEach(d => {
         const h = document.createElement('div');
         h.className = 'cal-header-cell';
         h.textContent = d;
@@ -760,10 +601,10 @@ function renderCalendar() {
         const cell = document.createElement('div');
         cell.className = `cal-cell${isToday ? ' cal-today' : ''}${myResponse === 'yes' ? ' cal-going' : myResponse === 'no' ? ' cal-not-going' : ''}`;
         const eventsForCell = allEvents.filter(e => e.date === dateStr);
-        const eventNamesHTML = eventsForCell.map(e => `<span class="cal-event-name">â— ${e.title}</span>`).join('');
+        const eventNamesHTML = eventsForCell.map(e => `<span class="cal-event-name">¡´ ${e.title}</span>`).join('');
         cell.innerHTML = `
             <span class="cal-date-num">${d}</span>
-            ${yesCount > 0 ? `<span class="cal-going-count">ğŸ‘¥ ${yesCount}</span>` : ''}
+            ${yesCount > 0 ? `<span class="cal-going-count">?? ${yesCount}</span>` : ''}
             ${eventNamesHTML}
         `;
         cell.onclick = () => openDayModal(dateStr);
@@ -780,22 +621,22 @@ function openDayModal(dateStr) {
 
 function renderDayModal(dateStr) {
     const [y, m, d] = dateStr.split('-').map(Number);
-    const weekdays = ['é€±æ—¥','é€±ä¸€','é€±äºŒ','é€±ä¸‰','é€±å››','é€±äº”','é€±å…­'];
+    const weekdays = ['¶g¤é','¶g¤@','¶g¤G','¶g¤T','¶g¥|','¶g¤­','¶g¤»'];
     const date = new Date(y, m-1, d);
-    document.getElementById('day-modal-title').textContent = `${m}æœˆ${d}æ—¥ ${weekdays[date.getDay()]}`;
+    document.getElementById('day-modal-title').textContent = `${m}¤ë${d}¤é ${weekdays[date.getDay()]}`;
 
     const presenceForDay = allPresence.filter(r => r.date === dateStr);
     const myResponse = currentUser ? (presenceForDay.find(r => r.userEmail === currentUser.email)?.response || null) : null;
 
-    // å‡ºå¸­å€å¡Š
+    // ¥X®u°Ï¶ô
     let presenceHTML = '';
     if (hasPermission('can_view_attendance')) {
-        presenceHTML = `<div class="day-section"><h4>å‡ºå¸­ç‹€æ…‹</h4><div class="member-presence-list">`;
+        presenceHTML = `<div class="day-section"><h4>¥X®uª¬ºA</h4><div class="member-presence-list">`;
         const activeMembers = allMembers.filter(mb => mb.Status === 'active');
         activeMembers.forEach(member => {
             const resp = presenceForDay.find(r => r.userEmail === member.id);
             const status = resp?.response || 'unknown';
-            const emoji = status === 'yes' ? 'âœ…' : status === 'no' ? 'âŒ' : 'â“';
+            const emoji = status === 'yes' ? '?' : status === 'no' ? '?' : '?';
             presenceHTML += `<div class="member-presence-item"><span>${emoji}</span><span>${member.Name}</span></div>`;
         });
         presenceHTML += `</div>`;
@@ -804,34 +645,34 @@ function renderDayModal(dateStr) {
     }
     if (currentUser && hasPermission('can_rsvp')) {
         presenceHTML += `<div class="my-vote-row">
-            <span>æˆ‘çš„ç‹€æ…‹ï¼š</span>
-            <button class="vote-btn vote-btn-yes ${myResponse === 'yes' ? 'selected' : ''}" onclick="castPresence('${dateStr}', 'yes')">âœ… å»</button>
-            <button class="vote-btn vote-btn-no ${myResponse === 'no' ? 'selected' : ''}" onclick="castPresence('${dateStr}', 'no')">âŒ ä¸å»</button>
+            <span>§Úªºª¬ºA¡G</span>
+            <button class="vote-btn vote-btn-yes ${myResponse === 'yes' ? 'selected' : ''}" onclick="castPresence('${dateStr}', 'yes')">? ¥h</button>
+            <button class="vote-btn vote-btn-no ${myResponse === 'no' ? 'selected' : ''}" onclick="castPresence('${dateStr}', 'no')">? ¤£¥h</button>
         </div>`;
     }
     presenceHTML += `</div>`;
 
-    // æ´»å‹•å€å¡Š
+    // ¬¡°Ê°Ï¶ô
     const eventsForDay = allEvents.filter(e => e.date === dateStr);
-    let eventsHTML = `<div class="day-section"><h4>æ´»å‹• ${hasPermission('can_create_events') ? `<button class="inline-add-btn" onclick="openEventModal('${dateStr}')">+ æ–°å¢</button>` : ''}</h4>`;
+    let eventsHTML = `<div class="day-section"><h4>¬¡°Ê ${hasPermission('can_create_events') ? `<button class="inline-add-btn" onclick="openEventModal('${dateStr}')">+ ·s¼W</button>` : ''}</h4>`;
     if (eventsForDay.length === 0) {
-        eventsHTML += `<p class="no-events">ä»Šå¤©æ²’æœ‰æ´»å‹•</p>`;
+        eventsHTML += `<p class="no-events">¤µ¤Ñ¨S¦³¬¡°Ê</p>`;
     } else {
         eventsForDay.forEach(ev => {
             const myRsvp = currentUser ? (allRsvp.find(r => r.eventId === ev.id && r.userEmail === currentUser.email)?.status || null) : null;
             const goingCount  = allRsvp.filter(r => r.eventId === ev.id && r.status === 'going').length;
             const maybeCount  = allRsvp.filter(r => r.eventId === ev.id && r.status === 'maybe').length;
-            const timeLabel = ev.timeStart ? `ğŸ• ${ev.timeStart}${ev.timeEnd ? ' â€“ ' + ev.timeEnd : ''}` : '';
+            const timeLabel = ev.timeStart ? `?? ${ev.timeStart}${ev.timeEnd ? ' ¡V ' + ev.timeEnd : ''}` : '';
             const isCreator = currentUser && currentUser.email === ev.createdBy;
             eventsHTML += `<div class="event-card">
                 <div class="event-card-header">
                     <span class="event-card-title">${ev.title}</span>
-                    ${isCreator ? `<button class="delete-event-btn" onclick="deleteEvent('${ev.id}')">åˆªé™¤</button>` : ''}
+                    ${isCreator ? `<button class="delete-event-btn" onclick="deleteEvent('${ev.id}')">§R°£</button>` : ''}
                 </div>
                 ${timeLabel ? `<div class="event-meta">${timeLabel}</div>` : ''}
-                ${ev.location ? `<div class="event-meta">ğŸ“ ${ev.location}</div>` : ''}
+                ${ev.location ? `<div class="event-meta">?? ${ev.location}</div>` : ''}
                 ${ev.description ? `<div class="event-meta">${ev.description}</div>` : ''}
-                <div class="event-rsvp-counts">âœ… ${goingCount} Going &nbsp;ï½œ&nbsp; ğŸ¤” ${maybeCount} Maybe</div>
+                <div class="event-rsvp-counts">? ${goingCount} Going &nbsp;¡U&nbsp; ?? ${maybeCount} Maybe</div>
                 ${currentUser ? `<div class="rsvp-buttons">
                     <button class="rsvp-btn ${myRsvp === 'going' ? 'selected' : ''}" onclick="castRsvp('${ev.id}', 'going')">Going</button>
                     <button class="rsvp-btn ${myRsvp === 'maybe' ? 'selected' : ''}" onclick="castRsvp('${ev.id}', 'maybe')">Maybe</button>
@@ -857,7 +698,7 @@ window.castPresence = async (dateStr, response) => {
             updatedAt: serverTimestamp()
         });
     } catch (err) {
-        showToast('æ›´æ–°å¤±æ•—', 'error');
+        showToast('§ó·s¥¢±Ñ', 'error');
     }
 };
 
@@ -872,18 +713,18 @@ window.castRsvp = async (eventId, status) => {
             updatedAt: serverTimestamp()
         });
     } catch (err) {
-        showToast('RSVP å¤±æ•—', 'error');
+        showToast('RSVP ¥¢±Ñ', 'error');
     }
 };
 
 window.deleteEvent = async (eventId) => {
     if (!currentUser) return;
-    if (!confirm('ç¢ºå®šè¦åˆªé™¤é€™å€‹æ´»å‹•å—ï¼Ÿ')) return;
+    if (!confirm('½T©w­n§R°£³o­Ó¬¡°Ê¶Ü¡H')) return;
     try {
         await deleteDoc(doc(db, 'events', eventId));
-        showToast('æ´»å‹•å·²åˆªé™¤', 'info');
+        showToast('¬¡°Ê¤w§R°£', 'info');
     } catch (err) {
-        showToast('åˆªé™¤å¤±æ•—', 'error');
+        showToast('§R°£¥¢±Ñ', 'error');
     }
 };
 
@@ -926,10 +767,10 @@ document.getElementById('event-form')?.addEventListener('submit', async (e) => {
             createdBy: currentUser.email,
             createdAt: serverTimestamp()
         });
-        showToast('æ´»å‹•å·²å»ºç«‹ï¼', 'success');
+        showToast('¬¡°Ê¤w«Ø¥ß¡I', 'success');
         document.getElementById('event-modal').style.display = 'none';
     } catch (err) {
-        showToast('å»ºç«‹å¤±æ•—', 'error');
+        showToast('«Ø¥ß¥¢±Ñ', 'error');
     } finally {
         submitBtn.disabled = false;
     }
@@ -975,11 +816,11 @@ function renderTickets() {
         : allTickets.filter(t => t.status === ticketFilter);
 
     if (filtered.length === 0) {
-        list.innerHTML = '<p style="color:#aaa;">ç›®å‰æ²’æœ‰ Ticket</p>';
+        list.innerHTML = '<p style="color:#aaa;">¥Ø«e¨S¦³ Ticket</p>';
         return;
     }
 
-    const typeEmoji = { bug: 'ğŸ›', feature: 'âœ¨', improvement: 'ğŸ”§' };
+    const typeEmoji = { bug: '??', feature: '?', improvement: '??' };
     const priorityClass = { low: 'priority-low', medium: 'priority-medium', high: 'priority-high' };
     const statusLabel = { open: 'Open', in_progress: 'In Progress', resolved: 'Resolved' };
 
@@ -1013,7 +854,7 @@ function renderTickets() {
 
         return `<div class="ticket-card ticket-status-${t.status}">
             <div class="ticket-card-header">
-                <span class="ticket-type">${typeEmoji[t.type] || 'ğŸ“'} ${t.title}</span>
+                <span class="ticket-type">${typeEmoji[t.type] || '??'} ${t.title}</span>
                 <span class="ticket-badge ${priorityClass[t.priority]}">${t.priority}</span>
             </div>
             <p class="ticket-desc">${t.description}</p>
@@ -1025,18 +866,18 @@ function renderTickets() {
             </div>
             <div class="ticket-actions">
                 ${canChangeStatus ? statusOptions : ''}
-                ${canDelete ? `<button class="tk-delete-btn" onclick="deleteTicket('${t.id}')">åˆªé™¤</button>` : ''}
+                ${canDelete ? `<button class="tk-delete-btn" onclick="deleteTicket('${t.id}')">§R°£</button>` : ''}
             </div>
 
-            <!-- ç•™è¨€å€ -->
+            <!-- ¯d¨¥°Ï -->
             <div class="ticket-comments-section">
                 <div class="comment-list" id="comments-${t.id}">
-                    ${commentsHTML || '<p style="color:#ccc; font-size:0.8em; margin:0;">å°šæœªæœ‰ç•™è¨€</p>'}
+                    ${commentsHTML || '<p style="color:#ccc; font-size:0.8em; margin:0;">©|¥¼¦³¯d¨¥</p>'}
                 </div>
                 ${currentUser ? `
                 <div class="comment-input-row">
-                    <input type="text" class="comment-input" id="input-${t.id}" placeholder="æ–°å¢ç•™è¨€æˆ–å›è¦†...">
-                    <button class="comment-submit-btn" onclick="addTicketComment('${t.id}')">é€å‡º</button>
+                    <input type="text" class="comment-input" id="input-${t.id}" placeholder="·s¼W¯d¨¥©Î¦^ÂĞ...">
+                    <button class="comment-submit-btn" onclick="addTicketComment('${t.id}')">°e¥X</button>
                 </div>` : ''}
             </div>
         </div>`;
@@ -1045,11 +886,11 @@ function renderTickets() {
 
 document.getElementById('ticket-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (!currentUser) { showToast('è«‹å…ˆç™»å…¥', 'error'); return; }
+    if (!currentUser) { showToast('½Ğ¥ıµn¤J', 'error'); return; }
     const btn = document.getElementById('tk-submit');
     const photoFile = document.getElementById('tk-photo').files[0];
     btn.disabled = true;
-    btn.textContent = "æäº¤å·¥ä½œä¸­...";
+    btn.textContent = "´£¥æ¤u§@¤¤...";
     
     try {
         let photoUrl = null;
@@ -1070,35 +911,35 @@ document.getElementById('ticket-form')?.addEventListener('submit', async (e) => 
             submittedBy: currentUserName || currentUser.email,
             createdBy: currentUser.email,
             createdAt: serverTimestamp(),
-            comments: [] // åˆå§‹åŒ–ç•™è¨€é™£åˆ—
+            comments: [] // ªì©l¤Æ¯d¨¥°}¦C
         });
-        showToast('Ticket å·²æäº¤ï¼', 'success');
+        showToast('Ticket ¤w´£¥æ¡I', 'success');
         e.target.reset();
     } catch (err) {
         console.error(err);
-        showToast('æäº¤å¤±æ•—', 'error');
+        showToast('´£¥æ¥¢±Ñ', 'error');
     } finally {
         btn.disabled = false;
-        btn.textContent = "æäº¤ Ticket";
+        btn.textContent = "´£¥æ Ticket";
     }
 });
 
 window.changeTicketStatus = async (id, newStatus) => {
     try {
         await updateDoc(doc(db, 'tickets', id), { status: newStatus });
-        showToast('ç‹€æ…‹å·²æ›´æ–°', 'success');
+        showToast('ª¬ºA¤w§ó·s', 'success');
     } catch (err) {
-        showToast('æ›´æ–°å¤±æ•—', 'error');
+        showToast('§ó·s¥¢±Ñ', 'error');
     }
 };
 
 window.deleteTicket = async (id) => {
-    if (!confirm('ç¢ºå®šåˆªé™¤æ­¤ Ticketï¼Ÿ')) return;
+    if (!confirm('½T©w§R°£¦¹ Ticket¡H')) return;
     try {
         await deleteDoc(doc(db, 'tickets', id));
-        showToast('å·²åˆªé™¤', 'info');
+        showToast('¤w§R°£', 'info');
     } catch (err) {
-        showToast('åˆªé™¤å¤±æ•—', 'error');
+        showToast('§R°£¥¢±Ñ', 'error');
     }
 };
 
@@ -1124,7 +965,147 @@ window.addTicketComment = async (id) => {
         input.value = '';
     } catch (err) {
         console.error(err);
-        showToast('ç•™è¨€ç™¼é€å¤±æ•—', 'error');
+        showToast('¯d¨¥µo°e¥¢±Ñ', 'error');
+    }
+};
+
+// --- °Q½×ªOÅŞ¿è (Discussion Board) ---
+let discussionUnsubscribe = null;
+
+function initDiscussions() {
+    if (!hasPermission('can_view_discussions')) {
+        document.getElementById('discussions-list').innerHTML = '<p style="color:red;">±z¨S¦³Åv­­¬d¬İ°Q½×ªO¡C</p>';
+        return;
+    }
+
+    // Modal Åã¥Ü»P¦¬°_
+    const modal = document.getElementById('discussion-modal');
+    const openBtn = document.getElementById('add-discussion-btn');
+    const closeBtn = document.getElementById('close-disc-modal');
+    const form = document.getElementById('discussion-form');
+
+    if (openBtn) {
+        openBtn.style.display = hasPermission('can_post_discussions') ? 'inline-block' : 'none';
+        openBtn.onclick = () => {
+            form.reset();
+            document.getElementById('disc-edit-id').value = '';
+            document.getElementById('disc-modal-title').innerText = '´£®×°Q½×Ä³ÃD';
+            modal.style.display = 'flex';
+        };
+    }
+
+    if (closeBtn) {
+        closeBtn.onclick = () => { modal.style.display = 'none'; };
+    }
+
+    if (form) {
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('disc-edit-id').value;
+            const title = document.getElementById('disc-title').value.trim();
+            const desc = document.getElementById('disc-desc').value.trim();
+            
+            if (!title) return;
+
+            try {
+                if (id) {
+                    await updateDoc(doc(db, 'discussions', id), {
+                        title,
+                        description: desc,
+                        updatedAt: serverTimestamp()
+                    });
+                    showToast('Ä³ÃD¤w§ó·s', 'success');
+                } else {
+                    await addDoc(collection(db, 'discussions'), {
+                        title,
+                        description: desc,
+                        createdBy: currentUser.email,
+                        creatorName: currentUserName || currentUser.email,
+                        createdAt: serverTimestamp(),
+                        isDone: false
+                    });
+                    showToast('´£®×¤w°e¥X', 'success');
+                }
+                modal.style.display = 'none';
+            } catch (err) {
+                console.error(err);
+                showToast('Àx¦s¥¢±Ñ', 'error');
+            }
+        };
+    }
+
+    // ¹ê®ÉºÊÅ¥
+    if (discussionUnsubscribe) discussionUnsubscribe();
+    discussionUnsubscribe = onSnapshot(
+        query(collection(db, 'discussions'), orderBy('createdAt', 'desc')),
+        (snapshot) => {
+            renderDiscussions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        }
+    );
+}
+
+function renderDiscussions(discussions) {
+    const list = document.getElementById('discussions-list');
+    if (!list) return;
+
+    if (discussions.length === 0) {
+        list.innerHTML = '<p style="color:#aaa;">¥Ø«e¨S¦³°Q½×Ä³ÃD¡AÅwªï´£®×¡I</p>';
+        return;
+    }
+
+    list.innerHTML = discussions.map(d => {
+        const canManage = hasPermission('can_manage_discussions');
+        const isOwner = currentUser && d.createdBy === currentUser.email;
+        const canEdit = isOwner || canManage;
+        
+        const date = d.createdAt?.toDate ? d.createdAt.toDate().toLocaleString() : '³B²z¤¤...';
+        
+        return `
+            <div class="discussion-card ${d.isDone ? 'is-done' : ''}">
+                <div class="discussion-header">
+                    <h3 class="discussion-title">${d.title}</h3>
+                    ${d.isDone ? '<span class="tk-status-badge tk-status-closed">¤wµ²®×</span>' : '<span class="tk-status-badge tk-status-open">¥¿¦¡´£®×</span>'}
+                </div>
+                <div class="discussion-desc">${d.description || '¡]µL¸É¥R»¡©ú¡^'}</div>
+                <div class="discussion-meta">
+                    <span>´£®×¤H¡G${d.creatorName}</span>
+                    <span>¤é´Á¡G${date}</span>
+                </div>
+                <div class="discussion-actions">
+                    ${!d.isDone && canManage ? `<button class="disc-btn disc-btn-done" onclick="resolveDiscussion('${d.id}')">?? µ²®×</button>` : ''}
+                    ${canEdit ? `<button class="disc-btn disc-btn-edit" onclick="editDiscussion('${d.id}', \`${d.title.replace(/'/g, "\\'")}\`, \`${(d.description || '').replace(/'/g, "\\'")}\`)">?? ½s¿è</button>` : ''}
+                    ${canManage ? `<button class="disc-btn disc-btn-delete" onclick="deleteDiscussion('${d.id}')">??? §R°£</button>` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+window.resolveDiscussion = async (id) => {
+    if (!confirm('±N¦¹Ä³ÃD¼Ğ¥Ü¬°¤w°Q½×§¹¦¨¡]µ²®×¡^¡H')) return;
+    try {
+        await updateDoc(doc(db, 'discussions', id), { isDone: true });
+        showToast('¤wµ²®×', 'success');
+    } catch (err) {
+        showToast('¾Ş§@¥¢±Ñ', 'error');
+    }
+};
+
+window.editDiscussion = (id, title, desc) => {
+    document.getElementById('disc-edit-id').value = id;
+    document.getElementById('disc-title').value = title;
+    document.getElementById('disc-desc').value = desc;
+    document.getElementById('disc-modal-title').innerText = '½s¿è°Q½×Ä³ÃD';
+    document.getElementById('discussion-modal').style.display = 'flex';
+};
+
+window.deleteDiscussion = async (id) => {
+    if (!confirm('½T©w­n¥Ã¤[§R°£¦¹°Q½×Ä³ÃD¡H')) return;
+    try {
+        await deleteDoc(doc(db, 'discussions', id));
+        showToast('¤w§R°£', 'info');
+    } catch (err) {
+        showToast('§R°£¥¢±Ñ', 'error');
     }
 };
 

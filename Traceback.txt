@@ -1,0 +1,618 @@
+// ===== 5. 出席日曆 =====
+
+let calendarYear = new Date().getFullYear();
+let calendarMonth = new Date().getMonth();
+let allPresence = [];
+let allEvents = [];
+let allRsvp = [];
+let scheduleInitialized = false;
+let presenceUnsub = null;
+let eventsUnsub = null;
+let rsvpUnsub = null;
+
+function initSchedule() {
+    if (scheduleInitialized) { renderCalendar(); return; }
+    scheduleInitialized = true;
+
+    presenceUnsub = onSnapshot(collection(db, 'scheduleResponses'), snap => {
+        allPresence = [];
+        snap.forEach(d => allPresence.push({ id: d.id, ...d.data() }));
+        renderCalendar();
+        refreshOpenDayModal();
+    });
+
+    eventsUnsub = onSnapshot(collection(db, 'events'), snap => {
+        allEvents = [];
+        snap.forEach(d => allEvents.push({ id: d.id, ...d.data() }));
+        renderCalendar();
+        refreshOpenDayModal();
+    });
+
+    rsvpUnsub = onSnapshot(collection(db, 'rsvp'), snap => {
+        allRsvp = [];
+        snap.forEach(d => allRsvp.push({ id: d.id, ...d.data() }));
+        refreshOpenDayModal();
+    });
+}
+
+function refreshOpenDayModal() {
+    const modal = document.getElementById('day-modal');
+    if (modal && modal.style.display !== 'none' && modal.dataset.openDate) {
+        renderDayModal(modal.dataset.openDate);
+    }
+}
+
+function renderCalendar() {
+    const grid = document.getElementById('calendar-grid');
+    const label = document.getElementById('cal-month-label');
+    if (!grid || !label) return;
+
+    label.textContent = `${calendarYear} 年 ${calendarMonth + 1} 月`;
+    const firstDay = new Date(calendarYear, calendarMonth, 1).getDay();
+    const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+    const today = new Date();
+
+    grid.innerHTML = '';
+    grid.className = 'calendar-grid';
+
+    ['日','一','二','三','四','五','六'].forEach(d => {
+        const h = document.createElement('div');
+        h.className = 'cal-header-cell';
+        h.textContent = d;
+        grid.appendChild(h);
+    });
+
+    for (let i = 0; i < firstDay; i++) {
+        const empty = document.createElement('div');
+        empty.className = 'cal-cell cal-empty';
+        grid.appendChild(empty);
+    }
+
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${calendarYear}-${String(calendarMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const yesCount = allPresence.filter(r => r.date === dateStr && r.response === 'yes').length;
+        const eventCount = allEvents.filter(e => e.date === dateStr).length;
+        const isToday = today.getFullYear() === calendarYear && today.getMonth() === calendarMonth && today.getDate() === d;
+        const myResponse = currentUser ? (allPresence.find(r => r.date === dateStr && r.userEmail === currentUser.email)?.response || null) : null;
+
+        const cell = document.createElement('div');
+        cell.className = `cal-cell${isToday ? ' cal-today' : ''}${myResponse === 'yes' ? ' cal-going' : myResponse === 'no' ? ' cal-not-going' : ''}`;
+        const eventsForCell = allEvents.filter(e => e.date === dateStr);
+        const eventNamesHTML = eventsForCell.map(e => `<span class="cal-event-name">● ${e.title}</span>`).join('');
+        cell.innerHTML = `
+            <span class="cal-date-num">${d}</span>
+            ${yesCount > 0 ? `<span class="cal-going-count">👥 ${yesCount}</span>` : ''}
+            ${eventNamesHTML}
+        `;
+        cell.onclick = () => openDayModal(dateStr);
+        grid.appendChild(cell);
+    }
+}
+
+function openDayModal(dateStr) {
+    const modal = document.getElementById('day-modal');
+    modal.dataset.openDate = dateStr;
+    renderDayModal(dateStr);
+    modal.style.display = 'flex';
+}
+
+function renderDayModal(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const weekdays = ['週日','週一','週二','週三','週四','週五','週六'];
+    const date = new Date(y, m-1, d);
+    document.getElementById('day-modal-title').textContent = `${m}月${d}日 ${weekdays[date.getDay()]}`;
+
+    const presenceForDay = allPresence.filter(r => r.date === dateStr);
+    const myResponse = currentUser ? (presenceForDay.find(r => r.userEmail === currentUser.email)?.response || null) : null;
+
+    // 出席區塊
+    let presenceHTML = '';
+    if (hasPermission('can_view_attendance')) {
+        presenceHTML = `<div class="day-section"><h4>出席狀態</h4><div class="member-presence-list">`;
+        const activeMembers = allMembers.filter(mb => mb.Status === 'active');
+        activeMembers.forEach(member => {
+            const resp = presenceForDay.find(r => r.userEmail === member.id);
+            const status = resp?.response || 'unknown';
+            const emoji = status === 'yes' ? '✅' : status === 'no' ? '❌' : '❓';
+            presenceHTML += `<div class="member-presence-item"><span>${emoji}</span><span>${member.Name}</span></div>`;
+        });
+        presenceHTML += `</div>`;
+    } else {
+        presenceHTML = `<div class="day-section">`;
+    }
+    if (currentUser && hasPermission('can_rsvp')) {
+        presenceHTML += `<div class="my-vote-row">
+            <span>我的狀態：</span>
+            <button class="vote-btn vote-btn-yes ${myResponse === 'yes' ? 'selected' : ''}" onclick="castPresence('${dateStr}', 'yes')">✅ 去</button>
+            <button class="vote-btn vote-btn-no ${myResponse === 'no' ? 'selected' : ''}" onclick="castPresence('${dateStr}', 'no')">❌ 不去</button>
+        </div>`;
+    }
+    presenceHTML += `</div>`;
+
+    // 活動區塊
+    const eventsForDay = allEvents.filter(e => e.date === dateStr);
+    let eventsHTML = `<div class="day-section"><h4>活動 ${hasPermission('can_create_events') ? `<button class="inline-add-btn" onclick="openEventModal('${dateStr}')">+ 新增</button>` : ''}</h4>`;
+    if (eventsForDay.length === 0) {
+        eventsHTML += `<p class="no-events">今天沒有活動</p>`;
+    } else {
+        eventsForDay.forEach(ev => {
+            const myRsvp = currentUser ? (allRsvp.find(r => r.eventId === ev.id && r.userEmail === currentUser.email)?.status || null) : null;
+            const goingCount  = allRsvp.filter(r => r.eventId === ev.id && r.status === 'going').length;
+            const maybeCount  = allRsvp.filter(r => r.eventId === ev.id && r.status === 'maybe').length;
+            const timeLabel = ev.timeStart ? `🕐 ${ev.timeStart}${ev.timeEnd ? ' – ' + ev.timeEnd : ''}` : '';
+            const isCreator = currentUser && currentUser.email === ev.createdBy;
+            eventsHTML += `<div class="event-card">
+                <div class="event-card-header">
+                    <span class="event-card-title">${ev.title}</span>
+                    ${isCreator ? `<button class="delete-event-btn" onclick="deleteEvent('${ev.id}')">刪除</button>` : ''}
+                </div>
+                ${timeLabel ? `<div class="event-meta">${timeLabel}</div>` : ''}
+                ${ev.location ? `<div class="event-meta">📍 ${ev.location}</div>` : ''}
+                ${ev.description ? `<div class="event-meta">${ev.description}</div>` : ''}
+                <div class="event-rsvp-counts">✅ ${goingCount} Going &nbsp;｜&nbsp; 🤔 ${maybeCount} Maybe</div>
+                ${currentUser ? `<div class="rsvp-buttons">
+                    <button class="rsvp-btn ${myRsvp === 'going' ? 'selected' : ''}" onclick="castRsvp('${ev.id}', 'going')">Going</button>
+                    <button class="rsvp-btn ${myRsvp === 'maybe' ? 'selected' : ''}" onclick="castRsvp('${ev.id}', 'maybe')">Maybe</button>
+                    <button class="rsvp-btn rsvp-no ${myRsvp === 'not_going' ? 'selected' : ''}" onclick="castRsvp('${ev.id}', 'not_going')">Not Going</button>
+                </div>` : ''}
+            </div>`;
+        });
+    }
+    eventsHTML += `</div>`;
+
+    document.getElementById('day-modal-body').innerHTML = presenceHTML + eventsHTML;
+}
+
+window.castPresence = async (dateStr, response) => {
+    if (!currentUser) return;
+    const docId = `${dateStr}_${currentUser.email}`;
+    try {
+        await setDoc(doc(db, 'scheduleResponses', docId), {
+            date: dateStr,
+            userEmail: currentUser.email,
+            userName: currentUserName || currentUser.email,
+            response,
+            updatedAt: serverTimestamp()
+        });
+    } catch (err) {
+        showToast('更新失敗', 'error');
+    }
+};
+
+window.castRsvp = async (eventId, status) => {
+    if (!currentUser) return;
+    const docId = `${eventId}_${currentUser.email}`;
+    try {
+        await setDoc(doc(db, 'rsvp', docId), {
+            eventId,
+            userEmail: currentUser.email,
+            status,
+            updatedAt: serverTimestamp()
+        });
+    } catch (err) {
+        showToast('RSVP 失敗', 'error');
+    }
+};
+
+window.deleteEvent = async (eventId) => {
+    if (!currentUser) return;
+    if (!confirm('確定要刪除這個活動嗎？')) return;
+    try {
+        await deleteDoc(doc(db, 'events', eventId));
+        showToast('活動已刪除', 'info');
+    } catch (err) {
+        showToast('刪除失敗', 'error');
+    }
+};
+
+window.openEventModal = (dateStr) => {
+    document.getElementById('event-form').reset();
+    if (dateStr) document.getElementById('ev-date').value = dateStr;
+    document.getElementById('event-modal').style.display = 'flex';
+};
+
+document.getElementById('cal-prev')?.addEventListener('click', () => {
+    calendarMonth--;
+    if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
+    renderCalendar();
+});
+document.getElementById('cal-next')?.addEventListener('click', () => {
+    calendarMonth++;
+    if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; }
+    renderCalendar();
+});
+document.getElementById('create-event-btn')?.addEventListener('click', () => openEventModal(null));
+document.getElementById('close-day-modal')?.addEventListener('click', () => {
+    document.getElementById('day-modal').style.display = 'none';
+});
+document.getElementById('close-event-modal')?.addEventListener('click', () => {
+    document.getElementById('event-modal').style.display = 'none';
+});
+document.getElementById('event-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!currentUser) return;
+    const submitBtn = e.target.querySelector('[type=submit]');
+    submitBtn.disabled = true;
+    try {
+        await addDoc(collection(db, 'events'), {
+            title: document.getElementById('ev-title').value,
+            date: document.getElementById('ev-date').value,
+            timeStart: document.getElementById('ev-time-start').value,
+            timeEnd: document.getElementById('ev-time-end').value,
+            location: document.getElementById('ev-location').value,
+            description: document.getElementById('ev-desc').value,
+            createdBy: currentUser.email,
+            createdAt: serverTimestamp()
+        });
+        showToast('活動已建立！', 'success');
+        document.getElementById('event-modal').style.display = 'none';
+    } catch (err) {
+        showToast('建立失敗', 'error');
+    } finally {
+        submitBtn.disabled = false;
+    }
+});
+
+
+
+###
+
+/* ===== Schedule 樣式 ===== */
+.schedule-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.schedule-filters {
+    display: flex;
+    gap: 8px;
+}
+.filter-btn {
+    padding: 6px 14px;
+    border: 1px solid #ccc;
+    border-radius: 20px;
+    background: white;
+    cursor: pointer;
+    font-size: 0.9em;
+}
+.filter-btn.active {
+    background: #1976d2;
+    color: white;
+    border-color: #1976d2;
+}
+.schedule-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.date-card {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 16px 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+.date-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.date-card-title {
+    font-size: 1.1em;
+    font-weight: bold;
+    color: #212121;
+}
+.response-badges {
+    display: flex;
+    gap: 6px;
+}
+.rbadge {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.82em;
+    font-weight: bold;
+}
+.rbadge-yes  { background: #e8f5e9; color: #2e7d32; }
+.rbadge-maybe{ background: #fff3e0; color: #e65100; }
+.rbadge-no   { background: #f5f5f5; color: #757575; }
+.attendees-list {
+    font-size: 0.85em;
+    color: #555;
+    margin-bottom: 12px;
+    min-height: 18px;
+}
+.vote-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.vote-btn {
+    flex: 1;
+    min-width: 80px;
+    min-height: 44px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    background: white;
+    cursor: pointer;
+    font-size: 0.9em;
+    font-weight: bold;
+    transition: background 0.15s, border-color 0.15s;
+}
+.vote-btn:disabled { opacity: 0.5; cursor: default; }
+.vote-btn-yes.selected  { background: #2e7d32; color: white; border-color: #2e7d32; }
+.vote-btn-maybe.selected{ background: #e65100; color: white; border-color: #e65100; }
+.vote-btn-no.selected   { background: #757575; color: white; border-color: #757575; }
+.vote-btn-yes:not(.selected):hover  { border-color: #2e7d32; color: #2e7d32; }
+.vote-btn-maybe:not(.selected):hover{ border-color: #e65100; color: #e65100; }
+.vote-btn-no:not(.selected):hover   { border-color: #757575; color: #757575; }
+.login-hint {
+    font-size: 0.85em;
+    color: #999;
+    margin-top: 8px;
+}
+
+/* ===== Tickets ===== */
+.tickets-layout {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 24px;
+    align-items: start;
+}
+@media (max-width: 900px) {
+    .tickets-layout { grid-template-columns: 1fr; }
+}
+.ticket-form-panel, .ticket-list-panel {
+    background: #fff;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.ticket-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.ticket-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.tk-filter-btn {
+    padding: 4px 12px;
+    border: 1px solid #ddd;
+    border-radius: 20px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 0.85em;
+}
+.tk-filter-btn.active { background: #3498db; color: #fff; border-color: #3498db; }
+.ticket-card {
+    border: 1px solid #eee;
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 12px;
+    border-left: 4px solid #ccc;
+}
+.ticket-status-open { border-left-color: #e67e22; }
+.ticket-status-in_progress { border-left-color: #3498db; }
+.ticket-status-resolved { border-left-color: #2ecc71; opacity: 0.75; }
+.ticket-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+.ticket-type { font-weight: 600; font-size: 0.95em; }
+.ticket-badge {
+    font-size: 0.75em;
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+    font-weight: 600;
+}
+.priority-low { background: #eafaf1; color: #27ae60; }
+.priority-medium { background: #fef9e7; color: #e67e22; }
+.priority-high { background: #fdecea; color: #e74c3c; }
+.ticket-desc { font-size: 0.88em; color: #555; margin: 4px 0 8px; white-space: pre-wrap; }
+.ticket-meta {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    font-size: 0.8em;
+    color: #999;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+.tk-status-badge {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.85em;
+    font-weight: 600;
+}
+.tk-status-open { background: #fef3e2; color: #e67e22; }
+.tk-status-in_progress { background: #eaf4ff; color: #3498db; }
+.tk-status-resolved { background: #eafaf1; color: #27ae60; }
+.ticket-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.tk-status-btn {
+    padding: 3px 10px;
+    border: 1px solid #bbb;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 0.8em;
+}
+.tk-status-btn:hover { background: #f0f0f0; }
+.tk-delete-btn {
+    padding: 3px 10px;
+    border: 1px solid #e74c3c;
+    border-radius: 4px;
+    background: #fff;
+    color: #e74c3c;
+    cursor: pointer;
+    font-size: 0.8em;
+    margin-left: auto;
+}
+.tk-delete-btn:hover { background: #e74c3c; color: #fff; }
+.schedule-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+.calendar-nav {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+#cal-month-label {
+    font-size: 1.1em;
+    font-weight: 600;
+    min-width: 110px;
+    text-align: center;
+}
+.cal-nav-btn {
+    background: none;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 4px 14px;
+    font-size: 1.3em;
+    cursor: pointer;
+    line-height: 1;
+}
+.cal-nav-btn:hover { background: #f0f0f0; }
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+}
+.cal-header-cell {
+    text-align: center;
+    font-weight: 600;
+    padding: 8px 0;
+    color: #888;
+    font-size: 0.9em;
+}
+.cal-cell {
+    min-height: 72px;
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    padding: 6px 8px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.cal-cell:hover { background: #f0f4ff; border-color: #3498db; }
+.cal-empty { background: none; border: none; cursor: default; }
+.cal-empty:hover { background: none; border: none; }
+.cal-today { border-color: #3498db; background: #eaf4ff; }
+.cal-going { border-color: #2ecc71; }
+.cal-not-going { opacity: 0.6; }
+.cal-date-num {
+    display: block;
+    font-weight: 600;
+    font-size: 1em;
+    margin-bottom: 4px;
+}
+.cal-going-count { display: block; font-size: 0.75em; color: #27ae60; }
+.cal-event-name {
+    display: block;
+    font-size: 0.72em;
+    color: #3498db;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
+}
+
+/* 日詳情 Modal */
+.day-modal-content {
+    max-width: 560px !important;
+    width: 92vw !important;
+    max-height: 85vh;
+    overflow-y: auto;
+}
+.day-section { margin-bottom: 20px; }
+.day-section h4 {
+    font-size: 1em;
+    color: #555;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.inline-add-btn {
+    background: none;
+    border: 1px solid #3498db;
+    color: #3498db;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.8em;
+    cursor: pointer;
+}
+.member-presence-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.member-presence-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9em;
+}
+.my-vote-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+.no-events { color: #aaa; font-size: 0.9em; }
+.event-card {
+    background: #f9f9f9;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 10px;
+}
+.event-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 4px;
+}
+.event-card-title { font-weight: 600; }
+.event-meta { font-size: 0.85em; color: #666; margin-bottom: 2px; }
+.event-rsvp-counts { font-size: 0.82em; color: #888; margin: 6px 0 4px; }
+.delete-event-btn {
+    background: none;
+    border: 1px solid #e74c3c;
+    color: #e74c3c;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.78em;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.delete-event-btn:hover { background: #e74c3c; color: #fff; }
+.rsvp-buttons { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.rsvp-btn {
+    padding: 4px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 0.85em;
+    transition: all 0.15s;
+}
+.rsvp-btn.selected { background: #3498db; color: #fff; border-color: #3498db; }
+.rsvp-no.selected { background: #e74c3c; border-color: #e74c3c; }
