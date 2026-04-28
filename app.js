@@ -696,6 +696,13 @@ function initSchedule() {
     if (scheduleInitialized) { renderCalendar(); return; }
     scheduleInitialized = true;
 
+    // 確保出席明細需要的會員資料已載入
+    if (allMembers.length === 0) {
+        loadMembers().then(refreshOpenDayModal).catch(err => {
+            console.error('載入會員資料失敗:', err);
+        });
+    }
+
     presenceUnsub = onSnapshot(collection(db, 'scheduleResponses'), snap => {
         allPresence = [];
         snap.forEach(d => allPresence.push({ id: d.id, ...d.data() }));
