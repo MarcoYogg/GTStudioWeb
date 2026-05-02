@@ -14,6 +14,7 @@ import {
     doc, 
     query, 
     orderBy, 
+    where,
     serverTimestamp,
     onSnapshot,
     deleteDoc
@@ -587,7 +588,8 @@ onAuthStateChanged(auth, async (user) => {
         userEmailSpan.textContent = `${currentUserName} (${currentUserRole})`;
         loginBtn.style.display = 'none';
         logoutBtn.style.display = 'inline-block';
-        loginWelcome.style.display = 'block';
+        const loginWelcome = $id('login-welcome');
+        if (loginWelcome) loginWelcome.style.display = 'block';
     } else {
         currentUserRole = "guest";
         currentPermissions = globalPermissionsMap["guest"];
@@ -595,7 +597,8 @@ onAuthStateChanged(auth, async (user) => {
         userEmailSpan.textContent = '';
         loginBtn.style.display = 'inline-block';
         logoutBtn.style.display = 'none';
-        loginWelcome.style.display = 'none';
+        const loginWelcome = $id('login-welcome');
+        if (loginWelcome) loginWelcome.style.display = 'none';
     }
     updateNavigationUI();
 
@@ -836,14 +839,17 @@ function renderMembers(list) {
 window.openEditMember = async (id) => {
     const m = allMembers.find(x => x.id === id);
     if (!m) return;
-    document.getElementById('edit-mode').value = "true";
-    document.getElementById('m-email').value = m.id;
-    document.getElementById('m-email').disabled = true;
-    document.getElementById('m-name').value = m.Name;
-    document.getElementById('m-role').value = m.Role;
-    document.getElementById('m-status').value = m.Status;
-    document.getElementById('modal-title').textContent = "編輯成員";
-    $id('member-modal')?.style.display = 'flex';
+    if ($id('edit-mode')) $id('edit-mode').value = "true";
+    if ($id('m-email')) {
+        $id('m-email').value = m.id;
+        $id('m-email').disabled = true;
+    }
+    if ($id('m-name')) $id('m-name').value = m.Name;
+    if ($id('m-role')) $id('m-role').value = m.Role;
+    if ($id('m-status')) $id('m-status').value = m.Status;
+    if ($id('modal-title')) $id('modal-title').textContent = "編輯成員";
+    const memberModal = $id('member-modal');
+    if (memberModal) memberModal.style.display = 'flex';
 };
 
 window.toggleMemberStatus = async (id, currentStatus) => {
@@ -903,15 +909,15 @@ function initSchedule() {
 }
 
 function refreshOpenDayModal() {
-    const modal = document.getElementById('day-modal');
+    const modal = $id('day-modal');
     if (modal && modal.style.display !== 'none' && modal.dataset.openDate) {
         renderDayModal(modal.dataset.openDate);
     }
 }
 
 function renderCalendar() {
-    const grid = document.getElementById('calendar-grid');
-    const label = document.getElementById('cal-month-label');
+    const grid = $id('calendar-grid');
+    const label = $id('cal-month-label');
     if (!grid || !label) return;
 
     label.textContent = `${calendarYear} 年 ${calendarMonth + 1} 月`;
@@ -957,7 +963,8 @@ function renderCalendar() {
 }
 
 function openDayModal(dateStr) {
-    const modal = document.getElementById('day-modal');
+    const modal = $id('day-modal');
+    if (!modal) return;
     modal.dataset.openDate = dateStr;
     renderDayModal(dateStr);
     modal.style.display = 'flex';
@@ -967,7 +974,7 @@ function renderDayModal(dateStr) {
     const [y, m, d] = dateStr.split('-').map(Number);
     const weekdays = ['週日','週一','週二','週三','週四','週五','週六'];
     const date = new Date(y, m-1, d);
-    document.getElementById('day-modal-title').textContent = `${m}月${d}日 ${weekdays[date.getDay()]}`;
+    $id('day-modal-title').textContent = `${m}月${d}日 ${weekdays[date.getDay()]}`;
 
     const presenceForDay = allPresence.filter(r => r.date === dateStr);
     const myResponse = currentUser ? (presenceForDay.find(r => r.userEmail === currentUser.email)?.response || null) : null;
@@ -1027,7 +1034,7 @@ function renderDayModal(dateStr) {
     }
     eventsHTML += `</div>`;
 
-    document.getElementById('day-modal-body').innerHTML = presenceHTML + eventsHTML;
+    $id('day-modal-body').innerHTML = presenceHTML + eventsHTML;
 }
 
 window.castPresence = async (dateStr, response) => {
@@ -1078,32 +1085,6 @@ window.openEventModal = (dateStr) => {
     const modal = $id('event-modal');
     if (modal) modal.style.display = 'flex';
 };
-document.getElementById('event-form')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!currentUser) return;
-    const submitBtn = e.target.querySelector('[type=submit]');
-    submitBtn.disabled = true;
-    try {
-        await addDoc(collection(db, 'events'), {
-            title: document.getElementById('ev-title').value,
-            date: document.getElementById('ev-date').value,
-            timeStart: document.getElementById('ev-time-start').value,
-            timeEnd: document.getElementById('ev-time-end').value,
-            location: document.getElementById('ev-location').value,
-            description: document.getElementById('ev-desc').value,
-            createdBy: currentUser.email,
-            createdAt: serverTimestamp()
-        });
-        showToast('活動已建立！', 'success');
-        document.getElementById('event-modal').style.display = 'none';
-    } catch (err) {
-        showToast('建立失敗', 'error');
-    } finally {
-        submitBtn.disabled = false;
-    }
-});
-
-
 
 // ===== 6. Tickets =====
 
@@ -1135,7 +1116,7 @@ function initTickets() {
 }
 
 function renderTickets() {
-    const list = document.getElementById('tickets-list');
+    const list = $id('tickets-list');
     if (!list) return;
 
     const filtered = ticketFilter === 'all'
@@ -1233,7 +1214,8 @@ window.deleteTicket = async (id) => {
 };
 
 window.addTicketComment = async (id) => {
-    const input = document.getElementById(`input-${id}`);
+    const input = $id(`input-${id}`);
+    if (!input) return;
     const text = input.value.trim();
     if (!text || !currentUser) return;
 
