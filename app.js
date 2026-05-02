@@ -124,36 +124,30 @@ function updateNavigationUI() {
 
 // --- DOM 元素參考 ---
 const navBtns = document.querySelectorAll('.nav-btn');
-const sections = document.querySelectorAll('.page-section');
 const loginBtn = document.getElementById('login-btn');
 const logoutBtn = document.getElementById('logout-btn');
 const userEmailSpan = document.getElementById('user-email');
-const loginWelcome = document.getElementById('login-welcome');
-const uploadForm = document.getElementById('upload-form');
-const receiptsBody = document.getElementById('receipts-body');
-const receiptModal = document.getElementById('receipt-modal');
-const receiptDetailBody = document.getElementById('receipt-detail-body');
-const closeReceiptModal = document.getElementById('close-receipt-modal');
+const appContent = document.getElementById('app-content');
 
-if (closeReceiptModal) {
-    closeReceiptModal.onclick = () => receiptModal.style.display = 'none';
+const PAGE_TEMPLATES = {
+    home: 'Home.html',
+    upload: 'receipt_upload.html',
+    list: 'receipt_list.html',
+    floorplan: 'floor_plan.html',
+    schedule: 'Schedule.html',
+    admin: 'admin_panel.html',
+    tickets: 'ticket.html',
+};
+
+const pageCache = {};
+
+function $id(id) {
+    return document.getElementById(id);
 }
 
-// Admin 元素
-const membersBody = document.getElementById('members-body');
-const memberModal = document.getElementById('member-modal');
-const memberForm = document.getElementById('member-form');
-const closeMemberModal = document.getElementById('close-modal');
-const addMemberBtn = document.getElementById('add-member-btn');
-const memberSearch = document.getElementById('member-search');
-const roleFilter = document.getElementById('role-filter');
-
-// 角色權限設定元素
-const manageRolesBtn = document.getElementById('manage-roles-btn');
-const rolesModal = document.getElementById('roles-modal');
-const closeRolesModal = document.getElementById('close-roles-modal');
-const rolesBody = document.getElementById('roles-body');
-const saveRolesBtn = document.getElementById('save-roles-btn');
+function $qsa(selector) {
+    return Array.from(document.querySelectorAll(selector));
+}
 
 const PERMISSION_GROUPS = [
     {
@@ -185,16 +179,376 @@ navBtns.forEach(btn => {
         const targetSection = btn.getAttribute('data-section');
         navBtns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        sections.forEach(sec => {
-            sec.style.display = sec.id === `section-${targetSection}` ? 'block' : 'none';
-        });
-
-        if (targetSection === 'list') loadReceipts();
-        if (targetSection === 'admin') loadMembers();
-        if (targetSection === 'schedule') initSchedule();
-        if (targetSection === 'tickets') initTickets();
+        loadAndInitPage(targetSection);
     });
 });
+
+const defaultSection = document.querySelector('[data-section="home"]');
+defaultSection?.classList.add('active');
+loadAndInitPage('home');
+
+async function loadAndInitPage(sectionKey) {
+    if (!PAGE_TEMPLATES[sectionKey]) return;
+    try {
+        if (!pageCache[sectionKey]) {
+            const resp = await fetch(`pages/${PAGE_TEMPLATES[sectionKey]}`);
+            if (!resp.ok) throw new Error(`無法載入 ${sectionKey}`);
+            pageCache[sectionKey] = await resp.text();
+        }
+        appContent.innerHTML = pageCache[sectionKey];
+        updateNavigationUI();
+        initializePage(sectionKey);
+    } catch (err) {
+        console.error(err);
+        appContent.innerHTML = `<div class="error-page"><p>載入頁面失敗：${sectionKey}</p></div>`;
+    }
+}
+
+function initializePage(sectionKey) {
+    updatePageAuthUI();
+    if (sectionKey === 'home') return;
+    if (sectionKey === 'upload') initUploadPage();
+    if (sectionKey === 'list') initReceiptPage();
+    if (sectionKey === 'admin') initAdminPage();
+    if (sectionKey === 'schedule') initSchedulePage();
+    if (sectionKey === 'tickets') initTicketsPage();
+}
+
+function updatePageAuthUI() {
+    const loginWelcome = $id('login-welcome');
+    if (loginWelcome) loginWelcome.style.display = currentUser ? 'block' : 'none';
+    const ticketHint = $id('tk-login-hint');
+    if (ticketHint) ticketHint.style.display = currentUser ? 'none' : 'block';
+}
+
+function initUploadPage() {
+    const uploadForm = $id('upload-form');
+    uploadForm?.addEventListener('submit', handleUploadSubmit);
+}
+
+function initReceiptPage() {
+    const closeBtn = $id('close-receipt-modal');
+    closeBtn?.addEventListener('click', () => {
+        const modal = $id('receipt-modal');
+        if (modal) modal.style.display = 'none';
+    });
+    const reportMonthSelect = $id('report-month-select');
+    if (reportMonthSelect) {
+        const today = new Date();
+        reportMonthSelect.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    }
+    $id('generate-report-btn')?.addEventListener('click', handleGenerateReport);
+    loadReceipts();
+}
+
+function initAdminPage() {
+    const manageRolesBtn = $id('manage-roles-btn');
+    const closeRolesModal = $id('close-roles-modal');
+    const saveRolesBtn = $id('save-roles-btn');
+    const addMemberBtn = $id('add-member-btn');
+    const closeMemberModal = $id('close-modal');
+    const memberSearch = $id('member-search');
+    const roleFilter = $id('role-filter');
+    const memberForm = $id('member-form');
+
+    manageRolesBtn?.addEventListener('click', () => {
+        renderRolesTable();
+        const rolesModal = $id('roles-modal');
+        if (rolesModal) rolesModal.style.display = 'flex';
+    });
+    closeRolesModal?.addEventListener('click', () => {
+        const rolesModal = $id('roles-modal');
+        if (rolesModal) rolesModal.style.display = 'none';
+    });
+    saveRolesBtn?.addEventListener('click', saveRolesSettings);
+    addMemberBtn?.addEventListener('click', openAddMemberModal);
+    closeMemberModal?.addEventListener('click', () => {
+        const memberModal = $id('member-modal');
+        if (memberModal) memberModal.style.display = 'none';
+    });
+    memberSearch?.addEventListener('input', filterMembers);
+    roleFilter?.addEventListener('input', filterMembers);
+    memberForm?.addEventListener('submit', handleMemberFormSubmit);
+
+    loadMembers();
+}
+
+function initSchedulePage() {
+    setupScheduleControls();
+    initSchedule();
+}
+
+function initTicketsPage() {
+    setupTicketControls();
+    initTickets();
+}
+
+function handleGenerateReport() {
+    const reportMonthSelect = $id('report-month-select');
+    const selectedMonth = reportMonthSelect?.value;
+    const utilities = Number($id('report-utilities')?.value) || 0;
+    const rent = 10000;
+
+    if (!selectedMonth) {
+        showToast('請選擇月份', 'error');
+        return;
+    }
+
+    generateReport(selectedMonth, utilities, rent);
+}
+
+async function generateReport(selectedMonth, utilities, rent) {
+    try {
+        const resultsDiv = $id('report-results');
+        if (resultsDiv) resultsDiv.style.display = 'block';
+
+        const q = query(collection(db, 'receipts'), where('status', '==', 'approved'));
+        const snap = await getDocs(q);
+        let totalApproved = 0;
+        snap.forEach(d => {
+            const data = d.data();
+            const date = data.createdAt?.toDate();
+            if (date) {
+                const monthStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                if (monthStr === selectedMonth) totalApproved += Number(data.amount);
+            }
+        });
+
+        const totalFixed = utilities + rent;
+        const totalSum = totalFixed + totalApproved;
+        const perPerson = totalSum / 8;
+
+        if ($id('res-total-approved')) $id('res-total-approved').textContent = `$${totalApproved.toLocaleString()}`;
+        if ($id('res-total-fixed')) $id('res-total-fixed').textContent = `$${totalFixed.toLocaleString()}`;
+        if ($id('res-total-sum')) $id('res-total-sum').textContent = `$${totalSum.toLocaleString()}`;
+        if ($id('res-per-person')) $id('res-per-person').textContent = `$${Math.round(perPerson).toLocaleString()}`;
+
+        showToast(`${selectedMonth} 報表計算完成`, 'success');
+    } catch (err) {
+        console.error(err);
+        showToast('產生報表失敗', 'error');
+    }
+}
+
+async function handleUploadSubmit(e) {
+    e.preventDefault();
+    const file = $id('receipt-file')?.files?.[0];
+    const statusDiv = $id('upload-status');
+    const submitBtn = $id('submit-upload');
+    if (!file) return;
+
+    try {
+        if (statusDiv) statusDiv.textContent = '上傳中...';
+        if (submitBtn) submitBtn.disabled = true;
+        const filePath = `receipts/${currentUser.email}/${Date.now()}_${file.name}`;
+        const fileRef = ref(storage, filePath);
+        await uploadBytes(fileRef, file);
+        const fileUrl = await getDownloadURL(fileRef);
+
+        await addDoc(collection(db, 'receipts'), {
+            title: $id('receipt-title')?.value,
+            amount: Number($id('receipt-amount')?.value) || 0,
+            note: $id('receipt-note')?.value,
+            fileUrl,
+            uploadedBy: currentUserName || currentUser.email,
+            uploadedByEmail: currentUser.email,
+            status: 'pending',
+            createdAt: serverTimestamp()
+        });
+        showToast('收據上傳成功！', 'success');
+        $id('upload-form')?.reset();
+    } catch (err) {
+        showToast('上傳失敗', 'error');
+    } finally {
+        if (submitBtn) submitBtn.disabled = false;
+    }
+}
+
+function setupScheduleControls() {
+    $id('cal-prev')?.addEventListener('click', () => {
+        calendarMonth--;
+        if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
+        renderCalendar();
+    });
+    $id('cal-next')?.addEventListener('click', () => {
+        calendarMonth++;
+        if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; }
+        renderCalendar();
+    });
+    $id('create-event-btn')?.addEventListener('click', () => openEventModal(null));
+    $id('close-day-modal')?.addEventListener('click', () => {
+        const modal = $id('day-modal');
+        if (modal) modal.style.display = 'none';
+    });
+    $id('close-event-modal')?.addEventListener('click', () => {
+        const modal = $id('event-modal');
+        if (modal) modal.style.display = 'none';
+    });
+    $id('event-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!currentUser) return;
+        const submitBtn = e.target.querySelector('[type=submit]');
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+            await addDoc(collection(db, 'events'), {
+                title: $id('ev-title')?.value,
+                date: $id('ev-date')?.value,
+                timeStart: $id('ev-time-start')?.value,
+                timeEnd: $id('ev-time-end')?.value,
+                location: $id('ev-location')?.value,
+                description: $id('ev-desc')?.value,
+                createdBy: currentUser.email,
+                createdAt: serverTimestamp()
+            });
+            showToast('活動已建立！', 'success');
+            const modal = $id('event-modal');
+            if (modal) modal.style.display = 'none';
+        } catch (err) {
+            showToast('建立失敗', 'error');
+        } finally {
+            if (submitBtn) submitBtn.disabled = false;
+        }
+    });
+}
+
+function setupTicketControls() {
+    const ticketForm = $id('ticket-form');
+    ticketForm?.addEventListener('submit', handleTicketSubmit);
+}
+
+async function handleTicketSubmit(e) {
+    e.preventDefault();
+    if (!currentUser) { showToast('請先登入', 'error'); return; }
+    const btn = $id('tk-submit');
+    const photoFile = $id('tk-photo')?.files?.[0];
+    if (btn) { btn.disabled = true; btn.textContent = '提交工作中...'; }
+
+    try {
+        let photoUrl = null;
+        if (photoFile) {
+            const filePath = `tickets/${currentUser.email}/${Date.now()}_${photoFile.name}`;
+            const fileRef = ref(storage, filePath);
+            await uploadBytes(fileRef, photoFile);
+            photoUrl = await getDownloadURL(fileRef);
+        }
+
+        await addDoc(collection(db, 'tickets'), {
+            type: $id('tk-type')?.value,
+            title: $id('tk-title')?.value,
+            description: $id('tk-desc')?.value,
+            priority: $id('tk-priority')?.value,
+            photoUrl,
+            status: 'open',
+            submittedBy: currentUserName || currentUser.email,
+            createdBy: currentUser.email,
+            createdAt: serverTimestamp(),
+            comments: []
+        });
+        showToast('Ticket 已提交！', 'success');
+        $id('ticket-form')?.reset();
+    } catch (err) {
+        console.error(err);
+        showToast('提交失敗', 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '提交 Ticket'; }
+    }
+}
+
+function openAddMemberModal() {
+    const memberForm = $id('member-form');
+    if (memberForm) memberForm.reset();
+    if ($id('edit-mode')) $id('edit-mode').value = 'false';
+    const emailInput = $id('m-email');
+    if (emailInput) emailInput.disabled = false;
+    if ($id('modal-title')) $id('modal-title').textContent = '新增成員';
+    const memberModal = $id('member-modal');
+    if (memberModal) memberModal.style.display = 'flex';
+}
+
+function filterMembers() {
+    const memberSearch = $id('member-search');
+    const roleFilter = $id('role-filter');
+    if (!memberSearch || !roleFilter) return;
+    const search = memberSearch.value.toLowerCase();
+    const role = roleFilter.value;
+    const filtered = allMembers.filter(m =>
+        (m.Name.toLowerCase().includes(search) || m.id.toLowerCase().includes(search)) &&
+        (role === 'all' || m.Role === role)
+    );
+    renderMembers(filtered);
+}
+
+async function handleMemberFormSubmit(e) {
+    e.preventDefault();
+    const isEdit = $id('edit-mode')?.value === 'true';
+    const email = $id('m-email')?.value;
+    const name = $id('m-name')?.value;
+    const role = $id('m-role')?.value;
+    const status = $id('m-status')?.value;
+
+    if (isEdit) {
+        const developers = allMembers.filter(m => m.Role === 'developer' && m.Status === 'active');
+        const target = allMembers.find(m => m.id === email);
+        if (target?.Role === 'developer' && role !== 'developer' && developers.length <= 1) {
+            alert('不可移除最後一個有效的 Developer');
+            return;
+        }
+        if (target?.Role === 'developer' && status === 'inactive' && developers.length <= 1) {
+            alert('不可停用最後一個 Developer');
+            return;
+        }
+    }
+
+    try {
+        if (!isEdit) {
+            const check = await getDoc(doc(db, 'member', email));
+            if (check.exists()) { alert('此 Email 已存在'); return; }
+        }
+        await setDoc(doc(db, 'member', email), { Name: name, Role: role, Status: status, Email: email });
+        const memberModal = $id('member-modal');
+        if (memberModal) memberModal.style.display = 'none';
+        loadMembers();
+    } catch (err) {
+        alert('儲存失敗');
+    }
+}
+
+async function saveRolesSettings() {
+    const rolesBody = $id('roles-body');
+    if (!rolesBody) return;
+    const newMap = JSON.parse(JSON.stringify(globalPermissionsMap));
+    const checkboxes = rolesBody.querySelectorAll('input[type="checkbox"]');
+
+    checkboxes.forEach(cb => {
+        const role = cb.getAttribute('data-role');
+        const perm = cb.getAttribute('data-perm');
+        newMap[role][perm] = cb.checked;
+    });
+
+    try {
+        const saveRolesBtn = $id('save-roles-btn');
+        if (saveRolesBtn) {
+            saveRolesBtn.disabled = true;
+            saveRolesBtn.textContent = '儲存中...';
+        }
+        await setDoc(doc(db, 'config', 'permissions'), newMap);
+        globalPermissionsMap = newMap;
+        currentPermissions = globalPermissionsMap[currentUserRole] || globalPermissionsMap['guest'];
+        updateNavigationUI();
+        showToast('權限設定已更新', 'success');
+        const rolesModal = $id('roles-modal');
+        if (rolesModal) rolesModal.style.display = 'none';
+    } catch (err) {
+        console.error(err);
+        showToast('儲存失敗', 'error');
+    } finally {
+        const saveRolesBtn = $id('save-roles-btn');
+        if (saveRolesBtn) {
+            saveRolesBtn.disabled = false;
+            saveRolesBtn.textContent = '儲存設定';
+        }
+    }
+}
 
 // --- 2. 認證邏輯 ---
 loginBtn.addEventListener('click', () => {
@@ -252,16 +606,11 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 // --- 6. 權限管理邏輯 ---
-manageRolesBtn.onclick = () => {
-    renderRolesTable();
-    rolesModal.style.display = 'flex';
-};
-
-closeRolesModal.onclick = () => rolesModal.style.display = 'none';
-
 function renderRolesTable() {
+    const rolesBody = $id('roles-body');
+    if (!rolesBody) return;
     rolesBody.innerHTML = '';
-    const roles = ["guest", "member", "finance"];
+    const roles = ['guest', 'member', 'finance'];
 
     PERMISSION_GROUPS.forEach(group => {
         const headerTr = document.createElement('tr');
@@ -283,136 +632,17 @@ function renderRolesTable() {
     });
 }
 
-saveRolesBtn.onclick = async () => {
-    const newMap = JSON.parse(JSON.stringify(globalPermissionsMap)); 
-    const checkboxes = rolesBody.querySelectorAll('input[type="checkbox"]');
-    
-    checkboxes.forEach(cb => {
-        const role = cb.getAttribute('data-role');
-        const perm = cb.getAttribute('data-perm');
-        newMap[role][perm] = cb.checked;
-    });
-
-    try {
-        saveRolesBtn.disabled = true;
-        saveRolesBtn.textContent = "儲存中...";
-        await setDoc(doc(db, "config", "permissions"), newMap);
-        globalPermissionsMap = newMap;
-        
-        // 如果當前用戶的角色被修改了，即時生效
-        currentPermissions = globalPermissionsMap[currentUserRole] || globalPermissionsMap["guest"];
-        updateNavigationUI();
-        
-        showToast("權限設定已更新", "success");
-        rolesModal.style.display = 'none';
-    } catch (err) {
-        console.error(err);
-        showToast("儲存失敗", "error");
-    } finally {
-        saveRolesBtn.disabled = false;
-        saveRolesBtn.textContent = "儲存設定";
-    }
-};
-
-// --- 月度報表結算 ---
-const reportMonthSelect = document.getElementById('report-month-select');
-if (reportMonthSelect) {
-    const today = new Date();
-    // 只在元素存在時設定預設值
-    reportMonthSelect.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-}
-
-document.getElementById('generate-report-btn')?.addEventListener('click', async () => {
-    const selectedMonth = reportMonthSelect.value; // YYYY-MM
-    const utilities = Number(document.getElementById('report-utilities').value) || 0;
-    const rent = 10000;
-    
-    if (!selectedMonth) {
-        showToast("請選擇月份", "error");
-        return;
-    }
-
-    try {
-        const resultsDiv = document.getElementById('report-results');
-        resultsDiv.style.display = 'block';
-        
-        // 抓取所有收據，過濾出 approved 且月份相符的
-        const q = query(collection(db, "receipts"), where("status", "==", "approved"));
-        const snap = await getDocs(q);
-        
-        let totalApproved = 0;
-        snap.forEach(d => {
-            const data = d.data();
-            const date = data.createdAt?.toDate();
-            if (date) {
-                const monthStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-                if (monthStr === selectedMonth) {
-                    totalApproved += Number(data.amount);
-                }
-            }
-        });
-
-        const totalFixed = utilities + rent;
-        const totalSum = totalFixed + totalApproved;
-        const perPerson = totalSum / 8;
-
-        document.getElementById('res-total-approved').textContent = `$${totalApproved.toLocaleString()}`;
-        document.getElementById('res-total-fixed').textContent = `$${totalFixed.toLocaleString()}`;
-        document.getElementById('res-total-sum').textContent = `$${totalSum.toLocaleString()}`;
-        document.getElementById('res-per-person').textContent = `$${Math.round(perPerson).toLocaleString()}`;
-
-        showToast(`${selectedMonth} 報表計算完成`, "success");
-    } catch (err) {
-        console.error(err);
-        showToast("產生報表失敗", "error");
-    }
-});
-
-uploadForm?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const file = document.getElementById('receipt-file').files[0];
-    const statusDiv = document.getElementById('upload-status');
-    const submitBtn = document.getElementById('submit-upload');
-    if (!file) return;
-
-    try {
-        statusDiv.textContent = "上傳中...";
-        submitBtn.disabled = true;
-        const filePath = `receipts/${currentUser.email}/${Date.now()}_${file.name}`;
-        const fileRef = ref(storage, filePath);
-        await uploadBytes(fileRef, file);
-        const fileUrl = await getDownloadURL(fileRef);
-
-        await addDoc(collection(db, "receipts"), {
-            title: document.getElementById('receipt-title').value,
-            amount: Number(document.getElementById('receipt-amount').value),
-            note: document.getElementById('receipt-note').value,
-            fileUrl,
-            uploadedBy: currentUserName || currentUser.email,
-            uploadedByEmail: currentUser.email, // 新增：用於判斷刪除權限
-            status: 'pending',
-            createdAt: serverTimestamp()
-        });
-        showToast("收據上傳成功！", "success");
-        uploadForm.reset();
-    } catch (err) {
-        showToast("上傳失敗", "error");
-    } finally {
-        submitBtn.disabled = false;
-    }
-});
-
 async function loadReceipts() {
+    const receiptsBody = $id('receipts-body');
+    if (!receiptsBody) return;
     receiptsBody.innerHTML = '<tr><td colspan="6">載入中...</td></tr>';
     try {
-        const q = query(collection(db, "receipts"), orderBy("createdAt", "desc"));
+        const q = query(collection(db, 'receipts'), orderBy('createdAt', 'desc'));
         const snap = await getDocs(q);
         receiptsBody.innerHTML = '';
         snap.forEach(d => {
             const data = d.data();
             const tr = document.createElement('tr');
-            
-            // 建立標題連結
             const titleTd = document.createElement('td');
             const titleLink = document.createElement('span');
             titleLink.className = 'title-link';
@@ -432,27 +662,22 @@ async function loadReceipts() {
             const actionsCell = tr.querySelector(`#act-${d.id}`);
             const isUploader = currentUser && (currentUser.email === data.uploadedByEmail || currentUser.email === data.uploadedBy);
 
-            // 核准按鈕
-            if (hasPermission("can_approve_receipts") && data.status === 'pending') {
+            if (hasPermission('can_approve_receipts') && data.status === 'pending') {
                 const btn = document.createElement('button');
                 btn.className = 'action-btn';
                 btn.textContent = '核准';
                 btn.onclick = () => approveReceipt(d.id);
                 actionsCell.appendChild(btn);
             }
-            // 拒絕按鈕
-            if (hasPermission("can_reject_receipts") && data.status === 'pending') {
+            if (hasPermission('can_reject_receipts') && data.status === 'pending') {
                 const btn = document.createElement('button');
                 btn.className = 'action-btn reject';
                 btn.textContent = '拒絕';
                 btn.onclick = () => rejectReceipt(d.id);
                 actionsCell.appendChild(btn);
             }
-            // 刪除按鈕邏輯：
-            // 1. 上傳者本人：隨時可以刪除 (Pending/Rejected)
-            // 2. 權限者/Developer：必須是 Rejected 狀態才能刪除（強制先拒絕再刪除）
             const canDeleteSelf = isUploader && (data.status === 'pending' || data.status === 'rejected');
-            const canDeleteAdmin = hasPermission("developer") && data.status === 'rejected';
+            const canDeleteAdmin = hasPermission('developer') && data.status === 'rejected';
 
             if (canDeleteSelf || canDeleteAdmin) {
                 const btn = document.createElement('button');
@@ -464,16 +689,19 @@ async function loadReceipts() {
 
             receiptsBody.appendChild(tr);
         });
-    } catch (err) { 
-        receiptsBody.innerHTML = '讀取失敗'; 
-        showToast("讀取收據失敗", "error");
+    } catch (err) {
+        receiptsBody.innerHTML = '讀取失敗';
+        showToast('讀取收據失敗', 'error');
     }
 }
 
 function showReceiptDetail(id, data) {
+    const receiptModal = $id('receipt-modal');
+    const receiptDetailBody = $id('receipt-detail-body');
+    if (!receiptModal || !receiptDetailBody) return;
+
     const canApprove = hasPermission('can_approve_receipts') && data.status === 'pending';
     const canReject = hasPermission('can_reject_receipts') && data.status === 'pending';
-    
     let reasonHTML = '';
     if (data.status === 'rejected' && data.rejectionNote) {
         reasonHTML = `
@@ -494,10 +722,7 @@ function showReceiptDetail(id, data) {
         </div>
         <img src="${data.fileUrl}" alt="收據文件">
     `;
-    // 動態管理按鈕
     const footer = receiptModal.querySelector('.modal-footer');
-    
-    // 先清理舊的動態按鈕
     footer.querySelectorAll('.dynamic-btn').forEach(btn => btn.remove());
 
     if (canApprove) {
@@ -510,11 +735,11 @@ function showReceiptDetail(id, data) {
         };
         footer.prepend(approveBtn);
     }
-    
+
     if (canReject) {
         const rejectBtn = document.createElement('button');
         rejectBtn.className = 'action-btn reject dynamic-btn';
-        rejectBtn.style.marginRight = 'auto'; // 靠左顯示一點
+        rejectBtn.style.marginRight = 'auto';
         rejectBtn.textContent = '拒絕此收據';
         rejectBtn.onclick = async () => {
             await rejectReceipt(id);
@@ -573,16 +798,22 @@ async function deleteReceipt(id) {
 
 // --- 4. Admin Panel 邏輯 ---
 async function loadMembers() {
+    const membersBody = $id('members-body');
+    if (!membersBody) return;
     membersBody.innerHTML = '<tr><td colspan="5">載入中...</td></tr>';
     try {
-        const snap = await getDocs(collection(db, "member"));
+        const snap = await getDocs(collection(db, 'member'));
         allMembers = [];
         snap.forEach(d => allMembers.push({ id: d.id, ...d.data() }));
         renderMembers(allMembers);
-    } catch (err) { membersBody.innerHTML = '讀取失敗'; }
+    } catch (err) {
+        membersBody.innerHTML = '讀取失敗';
+    }
 }
 
 function renderMembers(list) {
+    const membersBody = $id('members-body');
+    if (!membersBody) return;
     membersBody.innerHTML = '';
     list.forEach(m => {
         const tr = document.createElement('tr');
@@ -602,27 +833,6 @@ function renderMembers(list) {
     });
 }
 
-// 搜尋與篩選
-[memberSearch, roleFilter].forEach(el => el?.addEventListener('input', () => {
-    const search = memberSearch.value.toLowerCase();
-    const role = roleFilter.value;
-    const filtered = allMembers.filter(m => 
-        (m.Name.toLowerCase().includes(search) || m.id.toLowerCase().includes(search)) &&
-        (role === 'all' || m.Role === role)
-    );
-    renderMembers(filtered);
-}));
-
-// Modal 控制
-addMemberBtn.onclick = () => {
-    memberForm.reset();
-    document.getElementById('edit-mode').value = "false";
-    document.getElementById('m-email').disabled = false;
-    document.getElementById('modal-title').textContent = "新增成員";
-    memberModal.style.display = 'flex';
-};
-closeMemberModal.onclick = () => memberModal.style.display = 'none';
-
 window.openEditMember = async (id) => {
     const m = allMembers.find(x => x.id === id);
     if (!m) return;
@@ -633,39 +843,7 @@ window.openEditMember = async (id) => {
     document.getElementById('m-role').value = m.Role;
     document.getElementById('m-status').value = m.Status;
     document.getElementById('modal-title').textContent = "編輯成員";
-    memberModal.style.display = 'flex';
-};
-
-memberForm.onsubmit = async (e) => {
-    e.preventDefault();
-    const isEdit = document.getElementById('edit-mode').value === "true";
-    const email = document.getElementById('m-email').value;
-    const name = document.getElementById('m-name').value;
-    const role = document.getElementById('m-role').value;
-    const status = document.getElementById('m-status').value;
-
-    if (isEdit) {
-        const developers = allMembers.filter(m => m.Role === 'developer' && m.Status === 'active');
-        const target = allMembers.find(m => m.id === email);
-        if (target.Role === 'developer' && role !== 'developer' && developers.length <= 1) {
-            alert("不可移除最後一個有效的 Developer");
-            return;
-        }
-        if (target.Role === 'developer' && status === 'inactive' && developers.length <= 1) {
-            alert("不可停用最後一個 Developer");
-            return;
-        }
-    }
-
-    try {
-        if (!isEdit) {
-            const check = await getDoc(doc(db, "member", email));
-            if (check.exists()) { alert("此 Email 已存在"); return; }
-        }
-        await setDoc(doc(db, "member", email), { Name: name, Role: role, Status: status, Email: email });
-        memberModal.style.display = 'none';
-        loadMembers();
-    } catch (err) { alert("儲存失敗"); }
+    $id('member-modal')?.style.display = 'flex';
 };
 
 window.toggleMemberStatus = async (id, currentStatus) => {
@@ -895,28 +1073,11 @@ window.deleteEvent = async (eventId) => {
 };
 
 window.openEventModal = (dateStr) => {
-    document.getElementById('event-form').reset();
-    if (dateStr) document.getElementById('ev-date').value = dateStr;
-    document.getElementById('event-modal').style.display = 'flex';
+    if ($id('event-form')) $id('event-form').reset();
+    if (dateStr && $id('ev-date')) $id('ev-date').value = dateStr;
+    const modal = $id('event-modal');
+    if (modal) modal.style.display = 'flex';
 };
-
-document.getElementById('cal-prev')?.addEventListener('click', () => {
-    calendarMonth--;
-    if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
-    renderCalendar();
-});
-document.getElementById('cal-next')?.addEventListener('click', () => {
-    calendarMonth++;
-    if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; }
-    renderCalendar();
-});
-document.getElementById('create-event-btn')?.addEventListener('click', () => openEventModal(null));
-document.getElementById('close-day-modal')?.addEventListener('click', () => {
-    document.getElementById('day-modal').style.display = 'none';
-});
-document.getElementById('close-event-modal')?.addEventListener('click', () => {
-    document.getElementById('event-modal').style.display = 'none';
-});
 document.getElementById('event-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!currentUser) return;
@@ -1050,45 +1211,7 @@ function renderTickets() {
     }).join('');
 }
 
-document.getElementById('ticket-form')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!currentUser) { showToast('請先登入', 'error'); return; }
-    const btn = document.getElementById('tk-submit');
-    const photoFile = document.getElementById('tk-photo').files[0];
-    btn.disabled = true;
-    btn.textContent = "提交工作中...";
-    
-    try {
-        let photoUrl = null;
-        if (photoFile) {
-            const filePath = `tickets/${currentUser.email}/${Date.now()}_${photoFile.name}`;
-            const fileRef = ref(storage, filePath);
-            await uploadBytes(fileRef, photoFile);
-            photoUrl = await getDownloadURL(fileRef);
-        }
 
-        await addDoc(collection(db, 'tickets'), {
-            type: document.getElementById('tk-type').value,
-            title: document.getElementById('tk-title').value,
-            description: document.getElementById('tk-desc').value,
-            priority: document.getElementById('tk-priority').value,
-            photoUrl: photoUrl,
-            status: 'open',
-            submittedBy: currentUserName || currentUser.email,
-            createdBy: currentUser.email,
-            createdAt: serverTimestamp(),
-            comments: [] // 初始化留言陣列
-        });
-        showToast('Ticket 已提交！', 'success');
-        e.target.reset();
-    } catch (err) {
-        console.error(err);
-        showToast('提交失敗', 'error');
-    } finally {
-        btn.disabled = false;
-        btn.textContent = "提交 Ticket";
-    }
-});
 
 window.changeTicketStatus = async (id, newStatus) => {
     try {
