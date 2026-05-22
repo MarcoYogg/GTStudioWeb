@@ -1,4 +1,4 @@
-/* 基本樣式重置 */
+﻿/* ?箸璅???蔭 */
 * {
     box-sizing: border-box;
     margin: 0;
@@ -13,7 +13,7 @@ body {
     padding-bottom: 2rem;
 }
 
-/* Loading 遮罩與防閃爍 */
+/* Loading ?桃蔗??? */
 .app-hidden header, 
 .app-hidden main {
     display: none !important;
@@ -47,7 +47,7 @@ body {
     100% { transform: rotate(360deg); }
 }
 
-/* Header 與 導覽列 */
+/* Header ??撠汗??*/
 header {
     background-color: #fff;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -96,7 +96,7 @@ nav {
     color: white;
 }
 
-/* Auth 區域 */
+/* Auth ???*/
 #auth-section {
     display: flex;
     align-items: center;
@@ -116,7 +116,7 @@ nav {
     border-radius: 4px;
 }
 
-/* 主內容區塊 */
+/* 銝餃摰孵?憛?*/
 main {
     max-width: 1000px;
     margin: 2rem auto;
@@ -137,7 +137,7 @@ h2 {
     padding-bottom: 0.5rem;
 }
 
-/* 表單樣式 */
+/* 銵典璅?? */
 .form-group {
     margin-bottom: 1.2rem;
 }
@@ -172,7 +172,7 @@ h2 {
     background-color: #219150;
 }
 
-/* 月度報表結算 */
+/* ?漲?梯”蝯? */
 .report-container {
     background: #fdfdfd;
     border: 1px solid #eee;
@@ -243,7 +243,7 @@ h2 {
     font-weight: 800;
 }
 
-/* 表格樣式 */
+/* 銵冽璅?? */
 .table-container {
     overflow-x: auto;
 }
@@ -288,7 +288,7 @@ th {
     font-size: 0.8rem;
 }
 
-/* 響應式微調 */
+/* ?踵?撘凝隤?*/
 @media (max-width: 600px) {
     .header-container {
         flex-direction: column;
@@ -306,7 +306,7 @@ th {
     }
 }
 
-/* Admin Panel �˦� */
+/* Admin Panel 嚙誼佗蕭 */
 .admin-actions {
     display: flex;
     justify-content: space-between;
@@ -315,7 +315,7 @@ th {
     flex-wrap: wrap;
 }
 
-/* 角色權限 Modal group header */
+/* 閫甈? Modal group header */
 .perm-group-header {
     background-color: #f0f4ff;
     color: #3a5bd9;
@@ -396,7 +396,7 @@ th {
     cursor: pointer;
 }
 
-/* ===== Schedule 樣式 ===== */
+/* ===== Schedule 璅?? ===== */
 .schedule-header {
     display: flex;
     justify-content: space-between;
@@ -587,7 +587,7 @@ th {
     font-size: 0.8em;
 }
 
-/* Ticket 附件相片 */
+/* Ticket ?辣?貊? */
 .ticket-attachment {
     margin: 8px 0;
     max-width: 100%;
@@ -600,7 +600,7 @@ th {
     border: 1px solid #eee;
 }
 
-/* Ticket 留言系統 */
+/* Ticket ??蝟餌絞 */
 .ticket-comments-section {
     border-top: 1px dashed #eee;
     padding-top: 10px;
@@ -743,7 +743,7 @@ th {
     margin-top: 2px;
 }
 
-/* 日詳情 Modal */
+/* ?亥底??Modal */
 .day-modal-content {
     max-width: 560px !important;
     width: 92vw !important;
@@ -829,7 +829,7 @@ th {
 .rsvp-btn.selected { background: #3498db; color: #fff; border-color: #3498db; }
 .rsvp-no.selected { background: #e74c3c; border-color: #e74c3c; }
 
-/* Toast 通知系統 */
+/* Toast ?蝟餌絞 */
 #toast-container {
     position: fixed;
     top: 20px;
@@ -854,7 +854,7 @@ th {
     to { transform: translateX(0); opacity: 1; }
 }
 
-/* 收據詳情樣式 */
+/* ?嗆?閰單?璅?? */
 .title-link {
     color: #3498db;
     cursor: pointer;
@@ -886,7 +886,7 @@ th {
     margin: 5px 0;
 }
 
-/* 行動裝置優化 */
+/* 銵?鋆蔭?芸? */
 @media (max-width: 768px) {
     #top-nav {
         display: flex;
@@ -905,4 +905,84 @@ th {
     .page-section {
         padding: 10px;
     }
+}
+
+/* Tickets 區塊：左右分欄與表單樣式（嚴格 scoped） */
+#section-tickets .tk-layout {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+#section-tickets .tk-left-panel,
+#section-tickets .tk-right-panel {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px;
+}
+
+#section-tickets .tk-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+#section-tickets .tk-filter-btn {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#section-tickets .tk-filter-btn.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+#section-tickets #ticket-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#section-tickets #ticket-form input,
+#section-tickets #ticket-form textarea,
+#section-tickets #ticket-form select,
+#section-tickets #ticket-form button {
+  width: 100%;
+}
+
+#section-tickets #ticket-form input,
+#section-tickets #ticket-form textarea,
+#section-tickets #ticket-form select {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 14px;
+}
+
+#section-tickets #ticket-form textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+#section-tickets #ticket-form button[type="submit"] {
+  border: none;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+}
+
+@media (max-width: 980px) {
+  #section-tickets .tk-layout {
+    grid-template-columns: 1fr;
+  }
 }

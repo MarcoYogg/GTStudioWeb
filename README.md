@@ -13,15 +13,17 @@ cd GTStudioWeb
 ```
 
 ### 2) 安裝與執行 Install & Run
-> 目前技術棧持續調整中，請依專案實際腳本執行。  
-> Tech stack is still evolving; use available project scripts.
+目前此專案為 **純前端靜態頁 + Firebase Web SDK（CDN 模組）**。
 
-- 若有 `package.json`：
-```bash
-npm install
-npm run dev
-```
-- 若是純前端靜態頁：以瀏覽器開啟 `index.html` 或使用 Live Server。
+#### 建議方式（Recommended）
+使用 VS Code Live Server：
+1. 在專案根目錄開啟 `index.html`
+2. 右鍵 `Open with Live Server`
+3. 瀏覽器開啟後即可使用
+
+#### 備用方式（Fallback）
+直接雙擊 `index.html` 也可開啟，但部分瀏覽器對本機檔案權限限制較多，
+若遇到模組載入或登入問題，請改用 Live Server。
 
 ### 3) 開發流程 Development Flow (GitHub Flow)
 1. 從 `main` 開新分支：`feature/<topic>` 或 `fix/<topic>`
@@ -55,13 +57,8 @@ npm run dev
 - `CONTRIBUTING.md`：詳細協作流程
 - `.github/ISSUE_TEMPLATE/`：Issue 樣板
 - `.github/PULL_REQUEST_TEMPLATE.md`：PR 樣板
-
-- docs/team-working-agreement.md：輕量協作公約（適合信任型小團隊）
-
-- docs/PROJECT_OVERVIEW.md：專案快速導覽（給新加入開發者）
-- docs/REFACTOR_PLAN.md：不換框架的漸進式重構路線
-
-- docs/APP_JS_MAP.md：pp.js 粗粒度功能地圖與拆分優先序
-
-- docs/NEW_PAGE_GUIDE.md：新 sub-page 新增規範（輕量協作版）
-
+- `docs/team-working-agreement.md`：輕量協作公約（適合信任型小團隊）
+- `docs/PROJECT_OVERVIEW.md`：專案快速導覽（給新加入開發者）
+- `docs/REFACTOR_PLAN.md`：不換框架的漸進式重構路線
+- `docs/APP_JS_MAP.md`：`app.js` 粗粒度功能地圖與拆分優先序
+- `docs/NEW_PAGE_GUIDE.md`：新 sub-page 新增規範（輕量協作版）

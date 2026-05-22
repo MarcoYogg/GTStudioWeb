@@ -2,6 +2,16 @@
 
 let allMembers = [];
 
+function isPermissionDenied(error) {
+  return error?.code === 'permission-denied';
+}
+
+function renderAdminErrorState(message) {
+  const body = document.getElementById('members-body');
+  if (!body) return;
+  body.innerHTML = `<tr><td colspan="5" style="color:#ff6b6b;">${message}</td></tr>`;
+}
+
 function renderAdminPage() {
   const appContent = document.getElementById('app-content');
   if (!appContent) return;
@@ -103,10 +113,24 @@ function applyMemberFilters() {
 }
 
 export function initAdminModule({ db, appState, hasPermission, showToast }) {
+  void appState;
+  void hasPermission;
+
   window.addEventListener('pageChange', async (event) => {
     if (event.detail.page !== 'admin') return;
     renderAdminPage();
-    await loadMembers(db);
+
+    try {
+      await loadMembers(db);
+    } catch (error) {
+      if (isPermissionDenied(error)) {
+        showToast('你目前沒有查看成員資料的權限', 'error');
+        renderAdminErrorState('你目前沒有查看成員資料的權限');
+      } else {
+        showToast('載入成員資料失敗', 'error');
+        renderAdminErrorState('載入成員資料失敗，請稍後再試');
+      }
+    }
 
     document.getElementById('member-search')?.addEventListener('input', applyMemberFilters);
     document.getElementById('role-filter')?.addEventListener('change', applyMemberFilters);
@@ -150,9 +174,17 @@ export function initAdminModule({ db, appState, hasPermission, showToast }) {
         }
       }
 
-      await setDoc(doc(db, 'member', email), { Name: name, Role: role, Status: status, Email: email });
-      document.getElementById('member-modal').style.display = 'none';
-      await loadMembers(db);
+      try {
+        await setDoc(doc(db, 'member', email), { Name: name, Role: role, Status: status, Email: email });
+        document.getElementById('member-modal').style.display = 'none';
+        await loadMembers(db);
+      } catch (error) {
+        if (isPermissionDenied(error)) {
+          showToast('你目前沒有修改成員資料的權限', 'error');
+        } else {
+          showToast('儲存成員資料失敗', 'error');
+        }
+      }
     });
   });
 
@@ -177,8 +209,17 @@ export function initAdminModule({ db, appState, hasPermission, showToast }) {
       alert('不可停用最後一個 Developer');
       return;
     }
-    await updateDoc(doc(db, 'member', id), { Status: newStatus });
-    await loadMembers(db);
+
+    try {
+      await updateDoc(doc(db, 'member', id), { Status: newStatus });
+      await loadMembers(db);
+    } catch (error) {
+      if (isPermissionDenied(error)) {
+        showToast('你目前沒有修改成員狀態的權限', 'error');
+      } else {
+        showToast('更新成員狀態失敗', 'error');
+      }
+    }
   };
 
   return { ready: true, name: 'admin' };

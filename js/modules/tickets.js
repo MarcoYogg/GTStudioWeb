@@ -2,8 +2,18 @@
 import { ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 
 let allTickets = [];
-let ticketFilter = 'all';
+let ticketFilter = 'open';
 let ticketsInitialized = false;
+
+function isPermissionDenied(error) {
+  return error?.code === 'permission-denied';
+}
+
+function renderPermissionState(message) {
+  const list = document.getElementById('tickets-list');
+  if (!list) return;
+  list.innerHTML = `<p style="color:#ff6b6b;">${message}</p>`;
+}
 
 function renderTicketsPage() {
   const appContent = document.getElementById('app-content');
@@ -12,21 +22,37 @@ function renderTicketsPage() {
   appContent.innerHTML = `
     <section id="section-tickets" class="page-section">
       <h2>Tickets</h2>
-      <div class="tk-filter-bar">
-        <button class="tk-filter-btn active" data-filter="all">All</button>
-        <button class="tk-filter-btn" data-filter="open">Open</button>
-        <button class="tk-filter-btn" data-filter="in_progress">In Progress</button>
-        <button class="tk-filter-btn" data-filter="resolved">Resolved</button>
+      <div class="tk-layout">
+        <div class="tk-left-panel">
+          <div class="tk-filter-bar">
+            <button class="tk-filter-btn" data-filter="all">All</button>
+            <button class="tk-filter-btn active" data-filter="open">Open</button>
+            <button class="tk-filter-btn" data-filter="in_progress">In Progress</button>
+            <button class="tk-filter-btn" data-filter="resolved">Resolved</button>
+          </div>
+          <div id="tickets-list"></div>
+        </div>
+        <div class="tk-right-panel">
+          <form id="ticket-form">
+            <select id="tk-type" required>
+              <option value="" disabled selected>選擇類型</option>
+              <option value="Bug">Bug</option>
+              <option value="Feature">Feature</option>
+              <option value="Improvement">Improvement</option>
+            </select>
+            <input id="tk-title" placeholder="標題" required>
+            <textarea id="tk-desc" placeholder="描述" required></textarea>
+            <select id="tk-priority" required>
+              <option value="" disabled selected>選擇優先級</option>
+              <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+            </select>
+            <input id="tk-file" type="file" accept="image/*">
+            <button type="submit">建立 Ticket</button>
+          </form>
+        </div>
       </div>
-      <form id="ticket-form">
-        <input id="tk-type" placeholder="類型" required>
-        <input id="tk-title" placeholder="標題" required>
-        <textarea id="tk-desc" placeholder="描述" required></textarea>
-        <input id="tk-priority" placeholder="優先級" value="medium" required>
-        <input id="tk-photo" type="file" accept="image/*">
-        <button id="tk-submit" type="submit">提交 Ticket</button>
-      </form>
-      <div id="tickets-list">載入中...</div>
     </section>
   `;
 }
@@ -104,7 +130,18 @@ export function initTicketsModule({ db, storage, appState, hasPermission, showTo
   window.addEventListener('pageChange', async (event) => {
     if (event.detail.page !== 'tickets') return;
     renderTicketsPage();
-    await loadTickets(db, appState, hasPermission);
+
+    try {
+      await loadTickets(db, appState, hasPermission);
+    } catch (error) {
+      if (isPermissionDenied(error)) {
+        showToast('你目前沒有查看 Ticket 的權限', 'error');
+        renderPermissionState('你目前沒有查看 Ticket 的權限');
+      } else {
+        showToast('載入 Ticket 失敗', 'error');
+        renderPermissionState('載入 Ticket 失敗，請稍後再試');
+      }
+    }
 
     document.querySelectorAll('.tk-filter-btn').forEach((button) => {
       button.addEventListener('click', () => {
@@ -118,10 +155,10 @@ export function initTicketsModule({ db, storage, appState, hasPermission, showTo
     document.getElementById('ticket-form')?.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (!appState.currentUser) { showToast('請先登入', 'error'); return; }
-      const submitButton = document.getElementById('tk-submit');
-      const photoFile = document.getElementById('tk-photo').files[0];
+      const submitButton = document.querySelector('#ticket-form button[type="submit"]');
+      const photoFile = document.getElementById('tk-file')?.files?.[0] || null;
       submitButton.disabled = true;
-      submitButton.textContent = '提交工作中...';
+      submitButton.textContent = '建立中...';
 
       try {
         let photoUrl = null;
@@ -147,11 +184,15 @@ export function initTicketsModule({ db, storage, appState, hasPermission, showTo
         showToast('Ticket 已提交', 'success');
         event.target.reset();
         await loadTickets(db, appState, hasPermission);
-      } catch {
-        showToast('提交失敗', 'error');
+      } catch (error) {
+        if (isPermissionDenied(error)) {
+          showToast('你目前沒有提交 Ticket 的權限', 'error');
+        } else {
+          showToast('提交失敗', 'error');
+        }
       } finally {
         submitButton.disabled = false;
-        submitButton.textContent = '提交 Ticket';
+        submitButton.textContent = '建立 Ticket';
       }
     });
   });
@@ -161,8 +202,12 @@ export function initTicketsModule({ db, storage, appState, hasPermission, showTo
       await updateDoc(doc(db, 'tickets', id), { status: newStatus });
       showToast('狀態已更新', 'success');
       await loadTickets(db, appState, hasPermission);
-    } catch {
-      showToast('更新失敗', 'error');
+    } catch (error) {
+      if (isPermissionDenied(error)) {
+        showToast('你目前沒有更新 Ticket 狀態的權限', 'error');
+      } else {
+        showToast('更新失敗', 'error');
+      }
     }
   };
 
@@ -172,8 +217,12 @@ export function initTicketsModule({ db, storage, appState, hasPermission, showTo
       await deleteDoc(doc(db, 'tickets', id));
       showToast('已刪除', 'info');
       await loadTickets(db, appState, hasPermission);
-    } catch {
-      showToast('刪除失敗', 'error');
+    } catch (error) {
+      if (isPermissionDenied(error)) {
+        showToast('你目前沒有刪除 Ticket 的權限', 'error');
+      } else {
+        showToast('刪除失敗', 'error');
+      }
     }
   };
 
@@ -196,8 +245,12 @@ export function initTicketsModule({ db, storage, appState, hasPermission, showTo
       await updateDoc(doc(db, 'tickets', id), { comments });
       input.value = '';
       await loadTickets(db, appState, hasPermission);
-    } catch {
-      showToast('留言發送失敗', 'error');
+    } catch (error) {
+      if (isPermissionDenied(error)) {
+        showToast('你目前沒有留言權限', 'error');
+      } else {
+        showToast('留言發送失敗', 'error');
+      }
     }
   };
 
@@ -206,8 +259,13 @@ export function initTicketsModule({ db, storage, appState, hasPermission, showTo
     onSnapshot(query(collection(db, 'tickets'), orderBy('createdAt', 'desc')), (snap) => {
       allTickets = snap.docs.map((item) => ({ id: item.id, ...item.data() }));
       if (document.getElementById('tickets-list')) renderTickets(appState, hasPermission);
+    }, (error) => {
+      if (isPermissionDenied(error)) {
+        showToast('你目前沒有即時監聽 Ticket 的權限', 'error');
+      }
     });
   }
 
   return { ready: true, name: 'tickets' };
 }
+
