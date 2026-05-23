@@ -1,33 +1,50 @@
-﻿# PROJECT OVERVIEW / 專案總覽
+# PROJECT OVERVIEW / 專案總覽
 
-## 1. Project Purpose / 專案目的
-GT Studio Web 是朋友群共用工作室的網站，用於管理資訊、排程、票務/收據流程與日常協作。
+## 1. 專案是什麼
+GT Studio Web 是內部工作室管理網站，用來處理登入、權限、收據、排程、Tickets 與成員管理。
 
-## 2. Current Architecture / 目前架構
-- `index.html`：主入口頁（載入主要樣式與腳本）
-- `style.css`：全域樣式
-- `app.js`：目前核心互動邏輯（偏大型，後續會拆模組）
-- `pages/`：各功能頁面（Home、Schedule、ticket、receipt、admin 等）
+## 2. 目前技術棧
+| 層級 | 技術 |
+|---|---|
+| 前端 | 原生 JavaScript（ES Module） |
+| 樣式 | CSS |
+| 服務 | Firebase Auth / Firestore / Storage |
+| 入口 | `app.js` |
+| 功能模組 | `js/modules/*` |
+
+## 3. 目前架構
+- `index.html`：主入口頁
+- `app.js`：初始化與啟動流程
+- `pages/`：各功能頁面
 - `js/firebase-config.js`：Firebase 設定
-- `js/auth_utf8.js`：身份驗證相關邏輯
+- `js/modules/`：功能模組
 
-## 3. Directory Guide / 目錄導覽
-- `pages/`：功能頁 HTML
-- `js/`：共用 JS 與第三方整合（Firebase/Auth）
-- `.github/`：協作模板（Issue/PR）
-- `docs/`：專案文件與規劃
+## 4. 核心模組
+| 模組 | 職責 |
+|---|---|
+| auth | 登入 / 登出 / 使用者狀態 |
+| navigation | 頁面切換與導覽狀態 |
+| receipts | 收據上傳、清單、審核、報表 |
+| schedule | 行事曆與排程互動 |
+| admin | 成員與權限設定 |
+| tickets | Ticket 建立、列表、狀態與留言 |
 
-## 4. Key Risks Now / 目前風險
-- `app.js` 過大，功能耦合高，不利多人並行修改。
-- 存在 `app_backup.js`、`temp_app.js`，容易造成版本混亂。
-- 功能邊界與模組責任尚未文件化完成。
+## 5. 目錄導覽
+| 路徑 | 作用 |
+|---|---|
+| `pages/` | 功能頁 HTML |
+| `js/` | Firebase 與共用 JS |
+| `js/modules/` | 各功能模組 |
+| `docs/` | 架構與維護文件 |
+| `docs/archive/` | 舊版本與封存文件 |
 
-## 5. Collaboration Advice / 協作建議
-- 小步提交，PR 聚焦單一主題。
-- 改動前先看 `docs/team-working-agreement.md`。
-- 新功能優先放在可拆分模組，不再把所有邏輯堆進 `app.js`。
+## 6. 目前風險
+1. `app.js` 仍是入口協調中心，若堆太多邏輯會變難維護。
+2. 若模組邊界不清楚，容易發生跨頁耦合。
+3. 文件很多，若不分層，新人會不知道先看哪份。
 
-## 6. Suggested Immediate Focus / 建議近期重點
-1. 盤點 `app.js` 功能區塊並標註責任。
-2. 先拆最穩定且獨立的模組（例如 auth / navigation）。
-3. 逐步導入 `js/modules/*`，保留可回滾策略。
+## 7. 建議閱讀順序
+1. `README.md`
+2. `docs/MODULE_BOUNDARY.md`
+3. `docs/PAGE_ACCESS_TEST_CHECKLIST.md`
+4. 需要重構時再看 `docs/REFACTOR_PLAN.md` / `docs/REACT_MIGRATION_BLUEPRINT.md`
