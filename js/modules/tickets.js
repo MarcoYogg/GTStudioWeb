@@ -127,8 +127,7 @@ async function loadTickets(db, appState, hasPermission) {
 }
 
 export function initTicketsModule({ db, storage, appState, hasPermission, showToast }) {
-  window.addEventListener('pageChange', async (event) => {
-    if (event.detail.page !== 'tickets') return;
+  async function renderTicketsView() {
     renderTicketsPage();
 
     try {
@@ -195,7 +194,7 @@ export function initTicketsModule({ db, storage, appState, hasPermission, showTo
         submitButton.textContent = '建立 Ticket';
       }
     });
-  });
+  }
 
   window.changeTicketStatus = async (id, newStatus) => {
     try {
@@ -266,6 +265,15 @@ export function initTicketsModule({ db, storage, appState, hasPermission, showTo
     });
   }
 
-  return { ready: true, name: 'tickets' };
+  return {
+    ready: true,
+    name: 'tickets',
+    pages: {
+      tickets: {
+        canAccess: () => hasPermission('can_view_tickets'),
+        render: () => { void renderTicketsView(); }
+      }
+    }
+  };
 }
 

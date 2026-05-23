@@ -337,25 +337,10 @@ function bindReportEvents(db, showToast) {
 }
 
 export function initReceiptsModule({ db, storage, appState, hasPermission, showToast }) {
-  window.addEventListener('pageChange', async (event) => {
-    if (event.detail.page !== 'list' && event.detail.page !== 'upload') return;
-
-    renderReceiptsPage(appState, hasPermission);
-    bindReportEvents(db, showToast);
-
-    const uploadSection = document.getElementById('section-upload');
-    const listSection = document.getElementById('section-list');
-    if (uploadSection && listSection) {
-      const isUploadPage = event.detail.page === 'upload';
-      uploadSection.style.display = isUploadPage ? 'block' : 'none';
-      listSection.style.display = isUploadPage ? 'none' : 'block';
-    }
-
-    if (event.detail.page === 'list') {
-      await loadReceipts(db, appState, hasPermission, showToast);
-    }
-
-    document.getElementById('receipt-upload-form')?.addEventListener('submit', async (submitEvent) => {
+  function bindUploadForm() {
+    const form = document.getElementById('receipt-upload-form');
+    if (!form) return;
+    form.addEventListener('submit', async (submitEvent) => {
       submitEvent.preventDefault();
       const file = document.getElementById('receipt-file').files[0];
       if (!appState.currentUser) {
@@ -397,8 +382,39 @@ export function initReceiptsModule({ db, storage, appState, hasPermission, showT
         if (submitButton) submitButton.disabled = false;
       }
     });
-  });
+  }
+
+  function renderMode(mode) {
+    renderReceiptsPage(appState, hasPermission);
+    bindReportEvents(db, showToast);
+    bindUploadForm();
+
+    const uploadSection = document.getElementById('section-upload');
+    const listSection = document.getElementById('section-list');
+    if (uploadSection && listSection) {
+      const isUploadPage = mode === 'upload';
+      uploadSection.style.display = isUploadPage ? 'block' : 'none';
+      listSection.style.display = isUploadPage ? 'none' : 'block';
+    }
+
+    if (mode === 'list') {
+      void loadReceipts(db, appState, hasPermission, showToast);
+    }
+  }
 
   window.loadReceipts = () => loadReceipts(db, appState, hasPermission, showToast);
-  return { ready: true, name: 'receipts' };
+  return {
+    ready: true,
+    name: 'receipts',
+    pages: {
+      list: {
+        canAccess: () => hasPermission('can_view_receipts'),
+        render: () => renderMode('list')
+      },
+      upload: {
+        canAccess: () => hasPermission('can_upload_receipts'),
+        render: () => renderMode('upload')
+      }
+    }
+  };
 }

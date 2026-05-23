@@ -116,8 +116,7 @@ export function initAdminModule({ db, appState, hasPermission, showToast }) {
   void appState;
   void hasPermission;
 
-  window.addEventListener('pageChange', async (event) => {
-    if (event.detail.page !== 'admin') return;
+  async function renderAdminView() {
     renderAdminPage();
 
     try {
@@ -186,7 +185,7 @@ export function initAdminModule({ db, appState, hasPermission, showToast }) {
         }
       }
     });
-  });
+  }
 
   window.openEditMember = async (id) => {
     const member = allMembers.find((item) => item.id === id);
@@ -222,5 +221,14 @@ export function initAdminModule({ db, appState, hasPermission, showToast }) {
     }
   };
 
-  return { ready: true, name: 'admin' };
+  return {
+    ready: true,
+    name: 'admin',
+    pages: {
+      admin: {
+        canAccess: () => hasPermission('can_manage_members'),
+        render: () => { void renderAdminView(); }
+      }
+    }
+  };
 }

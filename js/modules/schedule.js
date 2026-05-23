@@ -556,12 +556,11 @@ function bindScheduleControls(db, appState, showToast) {
 }
 
 export function initScheduleModule({ db, appState, hasPermission, showToast }) {
-  window.addEventListener('pageChange', (event) => {
-    if (event.detail.page !== 'schedule') return;
+  function renderScheduleView() {
     renderSchedulePage(appState, hasPermission);
     bindScheduleControls(db, appState, showToast);
     renderCalendar(appState);
-  });
+  }
 
   if (!scheduleInitialized) {
     scheduleInitialized = true;
@@ -584,5 +583,14 @@ export function initScheduleModule({ db, appState, hasPermission, showToast }) {
     });
   }
 
-  return { ready: true, name: 'schedule' };
+  return {
+    ready: true,
+    name: 'schedule',
+    pages: {
+      schedule: {
+        canAccess: () => hasPermission('can_view_schedule'),
+        render: renderScheduleView
+      }
+    }
+  };
 }

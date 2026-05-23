@@ -1,9 +1,3 @@
-﻿function renderPage(targetSection) {
-  const appContent = document.getElementById('app-content');
-  if (!appContent) return;
-  appContent.innerHTML = `<section id="section-${targetSection}" class="page-section">${targetSection}</section>`;
-}
-
 function bindNavButtons() {
   document.querySelectorAll('.nav-btn').forEach((button) => {
     button.addEventListener('click', () => {
@@ -25,21 +19,33 @@ function updateNavigationUI(appState) {
   const userEmailSpan = document.getElementById('user-email');
   const loginBtn = document.getElementById('login-btn');
   const logoutBtn = document.getElementById('logout-btn');
-  if (userEmailSpan) userEmailSpan.textContent = appState.currentUser ? `${appState.currentUserName} (${appState.currentUserRole})` : '';
-  if (loginBtn) loginBtn.style.display = appState.currentUser ? 'none' : 'inline-block';
-  if (logoutBtn) logoutBtn.style.display = appState.currentUser ? 'inline-block' : 'none';
+
+  if (userEmailSpan) {
+    userEmailSpan.textContent = appState.currentUser ? `${appState.currentUserName} (${appState.currentUserRole})` : '';
+  }
+  if (loginBtn) {
+    loginBtn.style.display = appState.currentUser ? 'none' : 'inline-block';
+  }
+  if (logoutBtn) {
+    logoutBtn.style.display = appState.currentUser ? 'inline-block' : 'none';
+  }
 }
 
 export function initNavigationModule({ appState, hasPermission, showToast }) {
   void hasPermission;
   void showToast;
+
   bindNavButtons();
   window.addEventListener('pageChange', (event) => {
     window.__GT = window.__GT || {};
-    window.__GT.currentPage = event.detail.page;
-    renderPage(event.detail.page);
+    window.__GT.currentPage = event?.detail?.page || 'home';
     updateNavigationUI(appState);
   });
+
+  window.addEventListener('authStateReady', () => {
+    updateNavigationUI(appState);
+  });
+
   updateNavigationUI(appState);
   return { ready: true, name: 'navigation' };
 }
