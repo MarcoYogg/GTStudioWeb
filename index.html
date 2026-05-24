@@ -1,44 +1,12 @@
-﻿<!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GT Studio 內部管理</title>
-    <link rel="stylesheet" href="style.css">
-</head>
-<body class="app-hidden">
-
-    <div id="loading-overlay">
-        <div class="spinner"></div>
-        <p>載入中...</p>
-    </div>
-
-    <!-- Toast 通知容器 -->
-    <div id="toast-container"></div>
-
-    <header>
-        <div class="header-container">
-            <h1>GT Studio</h1>
-            <nav id="top-nav">
-                <button class="nav-btn active" data-section="home">首頁</button>
-                <button class="nav-btn" data-section="upload">上傳收據</button>
-                <button class="nav-btn" data-section="list">收據清單</button>
-                <button class="nav-btn" data-section="floorplan">平面圖</button>
-                <button class="nav-btn" data-section="schedule">Schedule</button>
-                <button class="nav-btn" data-section="admin">權限管理</button>
-                <button class="nav-btn" data-section="tickets">🚫 Tickets</button>
-            </nav>
-            <div id="auth-section">
-                <span id="user-email"></span>
-                <button id="login-btn" class="auth-btn">Google 登入</button>
-                <button id="logout-btn" class="auth-btn" style="display: none;">登出</button>
-            </div>
-        </div>
-    </header>
-
-    <main id="app-content"></main>
-
-    <!-- 這裡使用 type="module" 是為了支援 Firebase 模組化導入 -->
-    <script type="module" src="app.js"></script>
-</body>
+<!doctype html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GT Studio Web</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
